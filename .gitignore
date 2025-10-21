@@ -64,6 +64,12 @@ app.*.map.json
 firebase-service-account.json
 service-account.json
 
+# Firebase configuration files - CRITICAL!
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+android/app/google-services.json.backup
+lib/firebase_options.dart
+
 # Firebase configuration (if containing sensitive data)
 # Uncomment if your firebase_options.dart has sensitive info
 # firebase_options.dart
@@ -78,6 +84,10 @@ credentials.json
 # MongoDB connection strings and credentials
 mongodb_credentials.json
 mongodb.env
+
+# Documentation with sensitive examples
+ENV_SETUP.md
+.env.example
 
 # ==========================================
 # Development & Testing Files
