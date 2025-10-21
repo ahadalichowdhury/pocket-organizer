@@ -183,7 +183,7 @@ Update `.env.example`:
 
 ```bash
 # MongoDB Configuration (EXAMPLE - Replace with your own)
-MONGODB_CONNECTION_STRING=mongodb+srv://username:password@cluster.mongodb.net/database?retryWrites=true&w=majority
+MONGODB_CONNECTION_STRING=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CLUSTER.mongodb.net/YOUR_DATABASE
 MONGODB_DATABASE_NAME=your_database_name
 
 # IMPORTANT: Copy this file to .env and fill in real values
