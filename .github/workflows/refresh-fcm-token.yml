@@ -44,63 +44,92 @@ jobs:
           FCM_TOKEN: ${{ steps.get-token.outputs.token }}
         run: |
           echo "📤 Updating fcm_access_token in MongoDB Atlas..."
-
-          # MongoDB Atlas App Services API endpoint for updating a value
-          # Note: Use /values endpoint, not /secrets
+          
+          # Step 1: Login to get JWT token
+          echo "🔑 Authenticating with MongoDB Realm Admin API..."
+          
+          LOGIN_RESPONSE=$(curl -s --location --request POST \
+            'https://realm.mongodb.com/api/admin/v3.0/auth/providers/mongodb-cloud/login' \
+            --header 'Content-Type: application/json' \
+            --data-raw "{
+              \"username\": \"$MONGODB_PUBLIC_KEY\",
+              \"apiKey\": \"$MONGODB_PRIVATE_KEY\"
+            }")
+          
+          echo "Login response: $LOGIN_RESPONSE"
+          
+          # Extract access token from response
+          ACCESS_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+          
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "❌ Failed to get access token!"
+            echo "Response: $LOGIN_RESPONSE"
+            exit 1
+          fi
+          
+          echo "✅ Authentication successful!"
+          echo "Token: ${ACCESS_TOKEN:0:20}..."
+          
+          # Step 2: Get existing values to find fcm_access_token ID
+          echo ""
+          echo "📋 Getting existing values..."
+          
           API_URL="https://realm.mongodb.com/api/admin/v3.0/groups/$MONGODB_GROUP_ID/apps/$MONGODB_APP_ID/values"
-
-          echo "API URL: $API_URL"
-          echo "Group ID: $MONGODB_GROUP_ID"
-          echo "App ID: $MONGODB_APP_ID"
-
-          # First, get the value ID for fcm_access_token
-          echo "Getting existing value ID..."
+          
           GET_RESPONSE=$(curl -s \
-            -H "Content-Type: application/json" \
-            -u "$MONGODB_PUBLIC_KEY:$MONGODB_PRIVATE_KEY" \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            --header "Content-Type: application/json" \
             "$API_URL")
-
-          echo "Response: $GET_RESPONSE"
-
+          
+          echo "Values response: ${GET_RESPONSE:0:200}..."
+          
           # Extract the _id of fcm_access_token value (if it exists)
-          VALUE_ID=$(echo "$GET_RESPONSE" | grep -o '"_id":"[^"]*".*"name":"fcm_access_token"' | head -1 | grep -o '"_id":"[^"]*"' | cut -d'"' -f4)
-
+          VALUE_ID=$(echo "$GET_RESPONSE" | grep -o '"_id":"[^"]*"[^}]*"name":"fcm_access_token"' | grep -o '"_id":"[^"]*"' | cut -d'"' -f4)
+          
+          # Step 3: Update or create the value
           if [ -n "$VALUE_ID" ]; then
-            echo "Found existing value with ID: $VALUE_ID"
-            echo "Updating existing value..."
+            echo ""
+            echo "🔄 Found existing value with ID: $VALUE_ID"
+            echo "Updating..."
             
             # Update existing value
             UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
-              -H "Content-Type: application/json" \
-              -u "$MONGODB_PUBLIC_KEY:$MONGODB_PRIVATE_KEY" \
+              --header "Authorization: Bearer $ACCESS_TOKEN" \
+              --header "Content-Type: application/json" \
               "$API_URL/$VALUE_ID" \
-              -d "{\"name\":\"fcm_access_token\",\"value\":\"$FCM_TOKEN\",\"secret\":true}")
-            
-            HTTP_CODE=$(echo "$UPDATE_RESPONSE" | tail -n1)
-            BODY=$(echo "$UPDATE_RESPONSE" | head -n-1)
+              --data-raw "{
+                \"name\": \"fcm_access_token\",
+                \"value\": \"$FCM_TOKEN\",
+                \"secret\": true
+              }")
             
           else
-            echo "Value doesn't exist, creating new one..."
+            echo ""
+            echo "➕ Value doesn't exist, creating new one..."
             
             # Create new value
             UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-              -H "Content-Type: application/json" \
-              -u "$MONGODB_PUBLIC_KEY:$MONGODB_PRIVATE_KEY" \
+              --header "Authorization: Bearer $ACCESS_TOKEN" \
+              --header "Content-Type: application/json" \
               "$API_URL" \
-              -d "{\"name\":\"fcm_access_token\",\"value\":\"$FCM_TOKEN\",\"secret\":true}")
-            
-            HTTP_CODE=$(echo "$UPDATE_RESPONSE" | tail -n1)
-            BODY=$(echo "$UPDATE_RESPONSE" | head -n-1)
+              --data-raw "{
+                \"name\": \"fcm_access_token\",
+                \"value\": \"$FCM_TOKEN\",
+                \"secret\": true
+              }")
           fi
-
+          
+          HTTP_CODE=$(echo "$UPDATE_RESPONSE" | tail -n1)
+          BODY=$(echo "$UPDATE_RESPONSE" | head -n-1)
+          
+          echo ""
           echo "HTTP Code: $HTTP_CODE"
           echo "Response: $BODY"
-
+          
           if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
             echo "✅ Token updated successfully in MongoDB Atlas!"
           else
             echo "❌ Failed to update token. HTTP Code: $HTTP_CODE"
-            echo "Response: $BODY"
             exit 1
           fi
 
