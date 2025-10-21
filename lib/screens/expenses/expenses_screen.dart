@@ -8,11 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:uuid/uuid.dart';
+
+// import 'package:uuid/uuid.dart'; // Not needed - using server-side notifications
 
 import '../../core/constants/app_constants.dart';
 import '../../data/models/expense_model.dart';
-import '../../data/models/notification_model.dart';
+// import '../../data/models/notification_model.dart'; // Not needed - using server-side notifications
 import '../../data/services/hive_service.dart';
 import '../../data/services/user_settings_sync_service.dart';
 import '../../providers/app_providers.dart';
@@ -31,16 +32,18 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
   String? _selectedPaymentFilter;
   String _searchQuery = '';
 
-  final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-  final _uuid = const Uuid();
+  // 🔕 Local notification plugins - not needed with server-side notifications
+  // final FlutterLocalNotificationsPlugin _notificationsPlugin =
+  //     FlutterLocalNotificationsPlugin();
+  // final _uuid = const Uuid();
 
   @override
   void initState() {
     super.initState();
-    _initializeNotifications();
+    // _initializeNotifications(); // Not needed - using server-side notifications
   }
 
+  /* COMMENTED OUT - Local notification initialization not needed
   Future<void> _initializeNotifications() async {
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -86,6 +89,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       print('❌ [Notifications] Failed to show notification: $e');
     }
   }
+  */ // END OF COMMENTED NOTIFICATION CODE
 
   @override
   Widget build(BuildContext context) {
@@ -1454,6 +1458,11 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     }
 
     // Check if we need to show alert
+    // 🔕 LOCAL NOTIFICATIONS DISABLED - Using MongoDB Server-Side Notifications Instead
+    // The MongoDB trigger will handle all budget alerts automatically when expenses sync
+    // This prevents duplicate notifications (local + server)
+
+    /* COMMENTED OUT - LOCAL NOTIFICATION CODE
     if (shouldAlert) {
       // Use separate alert tracking for each budget type to know when we last crossed threshold
       final alertKey =
@@ -1520,6 +1529,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
             '💬 [Budget Alert] No alert needed - spent $percentageUsed% (threshold is ${alertThreshold}%)');
       }
     }
+    */ // END OF COMMENTED CODE - Now using server-side notifications only!
 
     return Card(
       color: progressColor.withOpacity(0.1),

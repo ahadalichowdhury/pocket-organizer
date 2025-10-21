@@ -113,12 +113,20 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
     }
     
     // Get expenses for period
+    // NOTE: Dates are stored as ISO8601 strings, so we need to query by string comparison
+    console.log(`   Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    
     const expenses = await db.collection("expenses")
       .find({
         userId: userId,
-        date: { $gte: startDate, $lt: endDate }
+        date: { $gte: startDate.toISOString(), $lt: endDate.toISOString() }
       })
       .toArray();
+    
+    console.log(`   Found ${expenses.length} expenses in period`);
+    if (expenses.length > 0) {
+      console.log(`   First expense date: ${expenses[0].date}, amount: ${expenses[0].amount}`);
+    }
     
     const totalSpent = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
     const thresholdAmount = budget * (alertThreshold / 100);
@@ -143,28 +151,36 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
       console.log(`   📤 Sending FCM notification...`);
       
       // Send FCM V1 notification
-      await sendFCMNotificationV1({
-        fcmToken,
-        title: `${capitalize(period)} Budget Alert`,
-        body: `You've spent $${totalSpent.toFixed(2)} of $${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
-        data: {
-          type: 'budget_alert',
-          period: period,
-          spent: totalSpent.toString(),
-          budget: budget.toString()
-        }
-      });
-      
-      // Save alert record
-      await db.collection("budget_alerts").insertOne({
-        userId: userId,
-        budgetKey: budgetKey,
-        amount: totalSpent,
-        alertedAt: new Date(),
-        period: period
-      });
-      
-      console.log(`   ✅ Alert sent and saved`);
+      try {
+        await sendFCMNotificationV1({
+          fcmToken,
+          title: `${capitalize(period)} Budget Alert`,
+          body: `You've spent $${totalSpent.toFixed(2)} of $${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
+          data: {
+            type: 'budget_alert',
+            period: period,
+            spent: totalSpent.toString(),
+            budget: budget.toString()
+          }
+        });
+        
+        // Save alert record
+        await db.collection("budget_alerts").insertOne({
+          userId: userId,
+          budgetKey: budgetKey,
+          amount: totalSpent,
+          alertedAt: new Date(),
+          period: period
+        });
+        
+        console.log(`   ✅ Alert sent and saved`);
+        
+      } catch (fcmError) {
+        console.error(`   ❌ FCM SEND FAILED:`, fcmError);
+        console.error(`   Error message: ${fcmError.message}`);
+        console.error(`   Error stack: ${fcmError.stack}`);
+        throw fcmError; // Re-throw to be caught by parent
+      }
     }
     
   } catch (error) {
@@ -177,14 +193,29 @@ async function sendFCMNotificationV1({ fcmToken, title, body, data }) {
     console.log("\n🚀 Sending FCM V1 notification...");
     
     // Get access token from MongoDB Atlas Secret
+    console.log("   🔑 Fetching fcm_access_token...");
     const accessToken = await context.values.get("fcm_access_token");
+    console.log(`   Access token exists: ${!!accessToken}`);
     if (!accessToken) {
+      console.error("   ❌ FCM access token is null/undefined!");
       throw new Error("FCM access token not configured. Run: gcloud auth print-access-token");
     }
     
     // Get project ID
+    console.log("   🔑 Fetching firebase_project_id...");
+    
+    // DEBUG: Try to list all available values
+    try {
+      const allValueNames = await context.values.names();
+      console.log("   📋 All available values:", allValueNames);
+    } catch (e) {
+      console.log("   ⚠️ Could not list values:", e.message);
+    }
+    
     const projectId = await context.values.get("firebase_project_id");
+    console.log(`   Project ID exists: ${!!projectId}, value: ${projectId}`);
     if (!projectId) {
+      console.error("   ❌ Firebase project ID is null/undefined!");
       throw new Error("Firebase project ID not configured");
     }
     
