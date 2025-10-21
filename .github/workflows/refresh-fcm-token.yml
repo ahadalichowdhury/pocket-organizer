@@ -1,0 +1,94 @@
+name: Refresh FCM Access Token
+
+# This workflow automatically refreshes the FCM access token every hour
+# and updates it in MongoDB Atlas
+
+on:
+  schedule:
+    # Runs every hour at minute 0
+    - cron: "0 * * * *"
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  refresh-token:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          export_default_credentials: true
+
+      - name: Generate FCM Access Token
+        id: get-token
+        run: |
+          # Generate OAuth 2.0 access token
+          TOKEN=$(gcloud auth print-access-token)
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "✅ Token generated: ${TOKEN:0:20}..."
+
+      - name: Update MongoDB Atlas Secret
+        env:
+          MONGODB_PUBLIC_KEY: ${{ secrets.MONGODB_PUBLIC_KEY }}
+          MONGODB_PRIVATE_KEY: ${{ secrets.MONGODB_PRIVATE_KEY }}
+          MONGODB_GROUP_ID: ${{ secrets.MONGODB_GROUP_ID }}
+          MONGODB_APP_ID: ${{ secrets.MONGODB_APP_ID }}
+          FCM_TOKEN: ${{ steps.get-token.outputs.token }}
+        run: |
+          echo "📤 Updating fcm_access_token in MongoDB Atlas..."
+
+          # Update the secret in MongoDB Atlas App Services
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+            -H "Content-Type: application/json" \
+            -u "$MONGODB_PUBLIC_KEY:$MONGODB_PRIVATE_KEY" \
+            "https://realm.mongodb.com/api/admin/v3.0/groups/$MONGODB_GROUP_ID/apps/$MONGODB_APP_ID/secrets" \
+            -d "{\"name\":\"fcm_access_token\",\"value\":\"$FCM_TOKEN\"}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          if [ "$HTTP_CODE" -eq 200 ] || [ "$HTTP_CODE" -eq 201 ]; then
+            echo "✅ Token updated successfully in MongoDB Atlas!"
+            echo "Response: $BODY"
+          else
+            echo "❌ Failed to update token. HTTP Code: $HTTP_CODE"
+            echo "Response: $BODY"
+            exit 1
+          fi
+
+      - name: Verify Token Update
+        env:
+          MONGODB_PUBLIC_KEY: ${{ secrets.MONGODB_PUBLIC_KEY }}
+          MONGODB_PRIVATE_KEY: ${{ secrets.MONGODB_PRIVATE_KEY }}
+          MONGODB_GROUP_ID: ${{ secrets.MONGODB_GROUP_ID }}
+          MONGODB_APP_ID: ${{ secrets.MONGODB_APP_ID }}
+        run: |
+          echo "🔍 Verifying token was updated..."
+
+          RESPONSE=$(curl -s \
+            -H "Content-Type: application/json" \
+            -u "$MONGODB_PUBLIC_KEY:$MONGODB_PRIVATE_KEY" \
+            "https://realm.mongodb.com/api/admin/v3.0/groups/$MONGODB_GROUP_ID/apps/$MONGODB_APP_ID/secrets")
+
+          if echo "$RESPONSE" | grep -q "fcm_access_token"; then
+            echo "✅ Token verified in MongoDB Atlas"
+          else
+            echo "⚠️ Could not verify token"
+          fi
+
+      - name: Notification
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "🎉 FCM Token refresh completed successfully!"
+            echo "Next refresh in 1 hour"
+          else
+            echo "❌ FCM Token refresh failed!"
+            echo "Check the logs above for details"
+          fi

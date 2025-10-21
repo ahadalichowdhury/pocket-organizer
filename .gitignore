@@ -1,0 +1,214 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Environment files - NEVER commit these!
+.env
+.env.local
+.env.production
+.env.*.local
+
+# API keys and secrets
+**/secrets.json
+**/api_keys.json
+
+# ==========================================
+# Firebase & Google Cloud - SENSITIVE! 
+# ==========================================
+# Firebase service account JSON files
+**/firebase-adminsdk*.json
+**/*service-account*.json
+**/*serviceAccount*.json
+**/*ServiceAccount*.json
+firebase-service-account.json
+service-account.json
+
+# Firebase configuration (if containing sensitive data)
+# Uncomment if your firebase_options.dart has sensitive info
+# firebase_options.dart
+
+# Google Cloud credentials
+gcloud-key.json
+credentials.json
+
+# ==========================================
+# MongoDB - SENSITIVE!
+# ==========================================
+# MongoDB connection strings and credentials
+mongodb_credentials.json
+mongodb.env
+
+# ==========================================
+# Development & Testing Files
+# ==========================================
+# Local development scripts
+generate-fcm-token.js
+test-*.js
+dev-*.js
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Log files
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+.coverage
+*.lcov
+
+# ==========================================
+# Build & Generated Files
+# ==========================================
+# Flutter build
+build/
+build.log
+build_output.log
+
+# Generated Dart files (if you regenerate them)
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# iOS build artifacts
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+
+# Android build artifacts
+android/.gradle/
+android/captures/
+android/gradle.properties.backup
+android/local.properties
+android/app/release/
+android/app/debug/
+android/app/profile/
+
+# macOS build artifacts
+macos/Pods/
+macos/.symlinks/
+
+# ==========================================
+# Documentation (Optional - Keep or Remove)
+# ==========================================
+# Development guides (you might want to keep these in repo)
+# Uncomment if you don't want to commit documentation
+# DEVELOPMENT.md
+# QUICKSTART.md
+# HOW_TO_RUN.md
+# *.md (DON'T uncomment this - too broad!)
+
+# Backup files
+*.backup
+*.bak
+*.bak2
+*.old
+
+# ==========================================
+# APK & Release Files (Optional)
+# ==========================================
+# Uncomment if you don't want to commit APK files
+# *.apk
+# *.aab
+# *.ipa
+
+# ==========================================
+# Node.js (if you use it for scripts)
+# ==========================================
+node_modules/
+package-lock.json
+yarn.lock
+
+# ==========================================
+# Python (if you use it for scripts)
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# ==========================================
+# Editor & IDE
+# ==========================================
+# VS Code
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ==========================================
+# OS Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# Personal Notes & TODO (Optional)
+# ==========================================
+TODO.txt
+NOTES.txt
+PERSONAL_*.md

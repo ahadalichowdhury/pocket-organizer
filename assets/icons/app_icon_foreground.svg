@@ -1,0 +1,26 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Transparent background for foreground -->
+  <rect width="512" height="512" fill="transparent"/>
+  
+  <!-- Folder Icon (White) -->
+  <path d="M 128 170 L 224 170 L 256 202 L 384 202 C 395.046 202 404 210.954 404 222 L 404 342 C 404 353.046 395.046 362 384 362 L 128 362 C 116.954 362 108 353.046 108 342 L 108 190 C 108 178.954 116.954 170 128 170 Z" fill="#FFF" opacity="1"/>
+  
+  <!-- Document Lines inside folder -->
+  <rect x="150" y="240" width="100" height="8" rx="4" fill="#1976D2"/>
+  <rect x="150" y="260" width="140" height="8" rx="4" fill="#1976D2"/>
+  <rect x="150" y="280" width="120" height="8" rx="4" fill="#1976D2"/>
+  
+  <!-- Receipt Symbol -->
+  <rect x="290" y="260" width="50" height="60" rx="4" fill="#FFF"/>
+  <path d="M 290 320 L 298 314 L 306 320 L 314 314 L 322 320 L 330 314 L 340 320" fill="none" stroke="#1976D2" stroke-width="4"/>
+  <circle cx="315" cy="280" r="12" fill="#FFB300"/>
+  <text x="315" y="287" font-family="Arial, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="#1976D2">$</text>
+</svg>
+
+
+
+
+
+
+
+

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "323532342809",
+    "project_id": "pocket-organizer-b01f8",
+    "storage_bucket": "pocket-organizer-b01f8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:323532342809:android:d359492757c1e149ab8c88",
+        "android_client_info": {
+          "package_name": "com.ahad.pocketorganizer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1J95q5U3svN4f2WnofsECbwmBwRyqBU4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:323532342809:android:976bdac9a4dd4301ab8c88",
+        "android_client_info": {
+          "package_name": "com.example.pocket_organizer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1J95q5U3svN4f2WnofsECbwmBwRyqBU4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

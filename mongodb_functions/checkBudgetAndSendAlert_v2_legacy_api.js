@@ -1,0 +1,268 @@
+/**
+ * MongoDB Realm Function: Budget Alert Checker (Legacy FCM API Version)
+ * 
+ * This function is triggered when an expense is synced to MongoDB.
+ * It checks if any budget thresholds are crossed and sends FCM notifications.
+ * 
+ * IMPORTANT: 
+ * - This version uses FCM Legacy API (simpler, no OAuth needed)
+ * - NO external packages required (firebase-admin, google-auth-library, etc.)
+ * - Uses only MongoDB Atlas built-in context.http API
+ * 
+ * SETUP INSTRUCTIONS:
+ * 1. Go to MongoDB Atlas → App Services → Your App
+ * 2. Go to Functions → Create new Function
+ * 3. Function Name: "checkBudgetAndSendAlert"
+ * 4. Copy THIS ENTIRE CODE into the function editor
+ * 5. IMPORTANT: DO NOT add any dependencies (no npm packages)
+ * 6. Save the function
+ * 7. Create a Database Trigger:
+ *    - Trigger Type: Database
+ *    - Name: "ExpenseSyncTrigger"
+ *    - Cluster: Your cluster name
+ *    - Database: pocket_organizer
+ *    - Collection: expenses
+ *    - Operation Type: Insert, Update
+ *    - Function: checkBudgetAndSendAlert
+ * 8. Create a MongoDB Atlas Secret:
+ *    - Go to Values → Create New Value
+ *    - Name: "fcm_server_key"
+ *    - Type: Secret
+ *    - Value: Your FCM Server Key (from Firebase Console)
+ * 9. Save and deploy
+ * 
+ * HOW TO GET FCM SERVER KEY:
+ * 1. Go to: https://console.firebase.google.com/
+ * 2. Select your project
+ * 3. Click Settings (⚙️) → Project Settings
+ * 4. Go to "Cloud Messaging" tab
+ * 5. Copy "Server key" (under Cloud Messaging API - Legacy)
+ */
+
+exports = async function(changeEvent) {
+  const mongodb = context.services.get("mongodb-atlas");
+  const db = mongodb.db("pocket_organizer");
+  
+  // Get the expense document
+  const expense = changeEvent.fullDocument;
+  if (!expense || !expense.userId) {
+    console.log("No userId in expense, skipping");
+    return;
+  }
+  
+  const userId = expense.userId;
+  console.log(`Checking budget for user: ${userId}`);
+  
+  try {
+    // Get user's settings (budget limits and alert threshold)
+    const userSettings = await db.collection("user_settings").findOne({ userId });
+    if (!userSettings) {
+      console.log("No settings found for user");
+      return;
+    }
+    
+    const alertThreshold = userSettings.alertThreshold || 80;
+    const dailyBudget = userSettings.dailyBudget;
+    const weeklyBudget = userSettings.weeklyBudget;
+    const monthlyBudget = userSettings.monthlyBudget;
+    
+    // Get user's FCM token
+    const userDoc = await db.collection("users").findOne({ userId });
+    if (!userDoc || !userDoc.fcmToken) {
+      console.log("No FCM token found for user");
+      return;
+    }
+    
+    const fcmToken = userDoc.fcmToken;
+    
+    // Check daily budget
+    if (dailyBudget && dailyBudget > 0) {
+      await checkAndAlert({
+        userId,
+        fcmToken,
+        budget: dailyBudget,
+        alertThreshold,
+        period: 'daily',
+        budgetKey: 'daily_budget',
+        db
+      });
+    }
+    
+    // Check weekly budget
+    if (weeklyBudget && weeklyBudget > 0) {
+      await checkAndAlert({
+        userId,
+        fcmToken,
+        budget: weeklyBudget,
+        alertThreshold,
+        period: 'weekly',
+        budgetKey: 'weekly_budget',
+        db
+      });
+    }
+    
+    // Check monthly budget
+    if (monthlyBudget && monthlyBudget > 0) {
+      await checkAndAlert({
+        userId,
+        fcmToken,
+        budget: monthlyBudget,
+        alertThreshold,
+        period: 'monthly',
+        budgetKey: 'monthly_budget',
+        db
+      });
+    }
+    
+  } catch (error) {
+    console.error("Error checking budget:", error);
+  }
+};
+
+async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period, budgetKey, db }) {
+  try {
+    // Calculate date range based on period
+    const now = new Date();
+    let startDate, endDate;
+    
+    if (period === 'daily') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 1);
+    } else if (period === 'weekly') {
+      const dayOfWeek = now.getDay();
+      const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1); // Monday as start
+      startDate = new Date(now.getFullYear(), now.getMonth(), diff);
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 7);
+    } else if (period === 'monthly') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    }
+    
+    // Get expenses for the period
+    const expenses = await db.collection("expenses")
+      .find({
+        userId: userId,
+        date: { $gte: startDate, $lt: endDate }
+      })
+      .toArray();
+    
+    // Calculate total spent
+    const totalSpent = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+    
+    // Calculate threshold amount
+    const thresholdAmount = budget * (alertThreshold / 100);
+    
+    // Check if threshold crossed
+    const shouldAlert = totalSpent >= thresholdAmount && totalSpent < budget;
+    
+    console.log(`${period} budget check:`, {
+      budget,
+      totalSpent,
+      threshold: thresholdAmount,
+      shouldAlert
+    });
+    
+    if (shouldAlert) {
+      // Check if we already alerted for this amount (prevent duplicates)
+      const lastAlert = await db.collection("budget_alerts").findOne({
+        userId: userId,
+        budgetKey: budgetKey,
+        amount: totalSpent
+      });
+      
+      if (!lastAlert) {
+        // Send FCM notification
+        await sendFCMNotification({
+          fcmToken,
+          title: `${capitalize(period)} Budget Alert`,
+          body: `You've spent $${totalSpent.toFixed(2)} of $${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
+          data: {
+            type: 'budget_alert',
+            period: period,
+            spent: totalSpent.toString(),
+            budget: budget.toString()
+          }
+        });
+        
+        // Save alert record to prevent duplicates
+        await db.collection("budget_alerts").insertOne({
+          userId: userId,
+          budgetKey: budgetKey,
+          amount: totalSpent,
+          alertedAt: new Date(),
+          period: period
+        });
+        
+        console.log(`✅ Sent ${period} budget alert to user ${userId}`);
+      } else {
+        console.log(`Already alerted for ${period} budget at amount ${totalSpent}`);
+      }
+    }
+    
+  } catch (error) {
+    console.error(`Error checking ${period} budget:`, error);
+  }
+}
+
+/**
+ * Send FCM notification using Legacy API
+ * This is simpler and doesn't require OAuth tokens
+ */
+async function sendFCMNotification({ fcmToken, title, body, data }) {
+  const fcmEndpoint = 'https://fcm.googleapis.com/fcm/send';
+  
+  // Get server key from MongoDB Atlas Secret
+  const serverKey = await context.values.get("fcm_server_key");
+  
+  if (!serverKey) {
+    console.error("FCM Server Key not found in MongoDB Atlas Values");
+    throw new Error("FCM Server Key not configured");
+  }
+  
+  const message = {
+    to: fcmToken,
+    notification: {
+      title: title,
+      body: body,
+      sound: 'default',
+      badge: '1'
+    },
+    data: data || {},
+    priority: 'high'
+  };
+  
+  try {
+    const response = await context.http.post({
+      url: fcmEndpoint,
+      headers: {
+        'Authorization': [`key=${serverKey}`],
+        'Content-Type': ['application/json']
+      },
+      body: JSON.stringify(message)
+    });
+    
+    const responseBody = response.body.text();
+    console.log('FCM response:', responseBody);
+    
+    // Check if notification was sent successfully
+    const responseData = JSON.parse(responseBody);
+    if (responseData.success === 1) {
+      console.log('✅ FCM notification sent successfully');
+    } else {
+      console.error('❌ FCM notification failed:', responseData);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error('Error sending FCM:', error);
+    throw error;
+  }
+}
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
