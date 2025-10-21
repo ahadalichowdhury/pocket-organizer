@@ -46,6 +46,12 @@ exports = async function(changeEvent) {
       return;
     }
     
+    // Check if notifications are enabled
+    if (userSettings.notificationsEnabled === false) {
+      console.log("🔕 Notifications disabled for user, skipping");
+      return;
+    }
+    
     const alertThreshold = userSettings.alertThreshold || 80;
     console.log(`📊 Alert threshold: ${alertThreshold}%`);
     
@@ -92,40 +98,77 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
   try {
     console.log(`\n📊 Checking ${period} budget...`);
     
-    // Calculate date range
+    // Calculate date range based on USER'S CURRENT TIME (not trigger time)
+    // We need to be flexible with timezones since expenses are stored with full timestamps
     const now = new Date();
     let startDate, endDate;
     
     if (period === 'daily') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 1);
+      // For daily budget, we want expenses from "today" in the user's timezone
+      // But since expenses have full timestamps, we need to check the date part only
+      // Solution: Query last 48 hours to catch timezone differences
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2);
     } else if (period === 'weekly') {
       const dayOfWeek = now.getDay();
       const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-      startDate = new Date(now.getFullYear(), now.getMonth(), diff);
+      startDate = new Date(now.getFullYear(), now.getMonth(), diff - 1);
       startDate.setHours(0, 0, 0, 0);
       endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 7);
+      endDate.setDate(endDate.getDate() + 9); // 7 days + 2 day buffer
     } else if (period === 'monthly') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      startDate = new Date(now.getFullYear(), now.getMonth(), 0); // Last day of previous month
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 2); // 2 days into next month
     }
     
-    // Get expenses for period
-    // NOTE: Dates are stored as ISO8601 strings, so we need to query by string comparison
-    console.log(`   Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    // Get expenses for period (with timezone buffer)
+    console.log(`   Date range (with buffer): ${startDate.toISOString()} to ${endDate.toISOString()}`);
     
-    const expenses = await db.collection("expenses")
+    const allExpenses = await db.collection("expenses")
       .find({
         userId: userId,
         date: { $gte: startDate.toISOString(), $lt: endDate.toISOString() }
       })
       .toArray();
     
-    console.log(`   Found ${expenses.length} expenses in period`);
+    console.log(`   Found ${allExpenses.length} expenses in extended period`);
+    
+    // Now filter expenses to match the actual period by parsing dates
+    const expenses = allExpenses.filter(exp => {
+      const expDate = new Date(exp.date);
+      const expYear = expDate.getUTCFullYear();
+      const expMonth = expDate.getUTCMonth();
+      const expDay = expDate.getUTCDate();
+      
+      const nowYear = now.getUTCFullYear();
+      const nowMonth = now.getUTCMonth();
+      const nowDay = now.getUTCDate();
+      
+      if (period === 'daily') {
+        // Check if expense is from today OR tomorrow (to handle worldwide timezones)
+        // User in GMT+12 thinks it's tomorrow when server (UTC) thinks it's today
+        // User in GMT-12 thinks it's yesterday when server (UTC) thinks it's today
+        // Solution: Accept expenses from today AND tomorrow
+        const isToday = expYear === nowYear && expMonth === nowMonth && expDay === nowDay;
+        const isTomorrow = expYear === nowYear && expMonth === nowMonth && expDay === (nowDay + 1);
+        return isToday || isTomorrow;
+      } else if (period === 'weekly') {
+        // Check if expense is in current week
+        const dayOfWeek = now.getUTCDay();
+        const weekStart = new Date(Date.UTC(nowYear, nowMonth, nowDay - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)));
+        const weekEnd = new Date(weekStart);
+        weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+        return expDate >= weekStart && expDate < weekEnd;
+      } else if (period === 'monthly') {
+        // Check if expense is from current month
+        return expYear === nowYear && expMonth === nowMonth;
+      }
+      return false;
+    });
+    
+    console.log(`   Filtered to ${expenses.length} expenses in actual ${period} period`);
     if (expenses.length > 0) {
-      console.log(`   First expense date: ${expenses[0].date}, amount: ${expenses[0].amount}`);
+      console.log(`   Sample expense: date=${expenses[0].date}, amount=${expenses[0].amount}`);
     }
     
     const totalSpent = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+// import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // Not needed - using server-side notifications
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +15,7 @@ import '../../core/constants/app_constants.dart';
 import '../../data/models/expense_model.dart';
 // import '../../data/models/notification_model.dart'; // Not needed - using server-side notifications
 import '../../data/services/hive_service.dart';
+import '../../data/services/smart_sync_service.dart';
 import '../../data/services/user_settings_sync_service.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/expense_summary_card.dart';
@@ -558,8 +559,10 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                               : storeNameController.text,
                         );
 
-                    // Check budget alerts after adding expense
-                    await _checkAllBudgetAlerts();
+                    // 🔕 LOCAL BUDGET ALERTS DISABLED
+                    // MongoDB server-side notifications will handle all budget alerts
+                    // This prevents duplicate notifications
+                    // await _checkAllBudgetAlerts(); // COMMENTED OUT
 
                     if (context.mounted) {
                       Navigator.pop(context);
@@ -827,8 +830,10 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                         storeName: expense.storeName,
                       );
 
-                  // Check budget alerts after duplicating expense
-                  await _checkAllBudgetAlerts();
+                  // 🔕 LOCAL BUDGET ALERTS DISABLED
+                  // MongoDB server-side notifications will handle all budget alerts
+                  // This prevents duplicate notifications
+                  // await _checkAllBudgetAlerts(); // COMMENTED OUT
 
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -1930,10 +1935,11 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                     await HiveService.saveSetting(
                         'alert_threshold', alertThreshold);
 
-                    // Sync to MongoDB
+                    // Sync to MongoDB (non-blocking, ignore errors)
                     final user = FirebaseAuth.instance.currentUser;
                     if (user != null) {
-                      await UserSettingsSyncService.updateSetting(
+                      // Run MongoDB sync in background without blocking UI
+                      UserSettingsSyncService.updateSetting(
                         userId: user.uid,
                         currencySymbol: selectedCurrency,
                         dailyBudget: dailyLimit == 0.0 ? null : dailyLimit,
@@ -1941,11 +1947,19 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                         monthlyBudget:
                             monthlyLimit == 0.0 ? null : monthlyLimit,
                         alertThreshold: alertThreshold,
-                      );
+                      ).catchError((error) {
+                        // Ignore MongoDB errors - SmartSync will retry later
+                        print(
+                            '⚠️ [BudgetSettings] MongoDB sync failed (will retry): $error');
+                      });
+
+                      // 🔄 Trigger smart sync (background, non-blocking)
+                      SmartSyncService.syncSettings();
                     }
 
                     setState(() {}); // Refresh UI
 
+                    // Close dialog IMMEDIATELY (don't wait for MongoDB)
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1954,7 +1968,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                             children: [
                               Icon(Icons.check_circle, color: Colors.white),
                               SizedBox(width: 12),
-                              Text('Budget settings saved & synced'),
+                              Text('Budget settings saved'),
                             ],
                           ),
                           backgroundColor: Colors.green,
@@ -1977,6 +1991,11 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
         as String;
   }
 
+  /* 🔕 LOCAL BUDGET ALERT FUNCTIONS DISABLED
+   * MongoDB server-side notifications now handle ALL budget alerts
+   * This prevents duplicate notifications (local + server)
+   * Keep this code commented for reference, but don't use it
+   
   /// Check all budget alerts (daily, weekly, monthly) after adding an expense
   /// This ensures notifications are sent regardless of which tab is currently active
   Future<void> _checkAllBudgetAlerts() async {
@@ -2116,4 +2135,5 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       print('❌ [ExpenseScreen] Failed to send notification: $e');
     }
   }
+  */ // END OF COMMENTED LOCAL BUDGET ALERT CODE
 }

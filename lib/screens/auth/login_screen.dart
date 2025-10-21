@@ -279,6 +279,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await _secureStorage.write(
           key: 'saved_password', value: _passwordController.text);
 
+      // 🔒 Save biometric setting to Hive (so settings screen shows correct state)
+      await HiveService.saveSetting('biometric_enabled', true);
+
       if (mounted) {
         setState(() => _hasSavedCredentials = true);
         ScaffoldMessenger.of(context).showSnackBar(

@@ -99,7 +99,7 @@ class S3StorageService {
   }
 
   /// Upload a document image to S3 using aws_s3_upload_lite
-  /// Image is automatically compressed before upload
+  /// Image is automatically compressed before upload (unless already compressed)
   static Future<String?> uploadDocumentImage({
     required String localImagePath,
     required String documentId,
@@ -122,17 +122,32 @@ class S3StorageService {
         return null;
       }
 
-      // Compress image before upload
-      final compressedBytes = await _compressImage(localImagePath);
-      if (compressedBytes == null) {
-        print('❌ [S3] Failed to process image');
-        return null;
+      // Check if image is already compressed (from ImageCompressionService)
+      final fileName = path.basename(localImagePath);
+      final isAlreadyCompressed = fileName.startsWith('compressed_');
+
+      Uint8List compressedBytes;
+
+      if (isAlreadyCompressed) {
+        // Skip compression - image is already optimized by ImageCompressionService
+        print('✅ [S3] Image already compressed, skipping re-compression');
+        final fileSize = await file.length();
+        print('   File size: ${formatBytes(fileSize)}');
+        compressedBytes = await file.readAsBytes();
+      } else {
+        // Compress image before upload (legacy path for old documents)
+        print('⚠️ [S3] Image not pre-compressed, compressing now...');
+        final compressed = await _compressImage(localImagePath);
+        if (compressed == null) {
+          print('❌ [S3] Failed to process image');
+          return null;
+        }
+        compressedBytes = compressed;
       }
 
-      final fileName = path.basename(localImagePath);
       final destDir = 'users/${user.uid}/documents/$documentId';
 
-      print('📤 [S3] Uploading compressed image: $fileName');
+      print('📤 [S3] Uploading image: $fileName');
       print('   Upload size: ${formatBytes(compressedBytes.length)}');
       print('   S3 destination: $destDir/$fileName');
       print('   Bucket: $_bucket');

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../data/services/image_compression_service.dart';
 import '../../providers/app_providers.dart';
 
 class CaptureDocumentScreen extends ConsumerStatefulWidget {
@@ -37,21 +38,73 @@ class _CaptureDocumentScreenState extends ConsumerState<CaptureDocumentScreen> {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: source,
-        imageQuality: 85,
+        imageQuality:
+            100, // Get original quality from picker, we'll compress it ourselves
       );
 
       if (pickedFile != null) {
-        setState(() {
-          _imageFile = File(pickedFile.path);
-          // Set default title
-          _titleController.text =
-              'Document ${DateTime.now().toLocal().toString().split(' ')[0]}';
-          // Set default type
-          _selectedType = DocumentType.uncategorized;
-        });
+        // Show loading indicator while compressing
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Text('Compressing image...'),
+                ],
+              ),
+              duration: Duration(seconds: 30),
+            ),
+          );
+        }
 
-        // Auto-select folder based on type
-        _autoSelectFolder();
+        // Compress the image immediately after selection
+        final compressedPath =
+            await ImageCompressionService.compressImage(pickedFile.path);
+
+        // Hide loading indicator
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        }
+
+        if (compressedPath != null) {
+          setState(() {
+            _imageFile = File(compressedPath);
+            // Set default title
+            _titleController.text =
+                'Document ${DateTime.now().toLocal().toString().split(' ')[0]}';
+            // Set default type
+            _selectedType = DocumentType.uncategorized;
+          });
+
+          // Auto-select folder based on type
+          _autoSelectFolder();
+
+          // Show success message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text('Image compressed successfully!'),
+                  ],
+                ),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {

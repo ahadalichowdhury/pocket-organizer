@@ -168,9 +168,21 @@ Future<void> _generateAndSendReport(String reportType) async {
 
     if (!canProceed) {
       final connectionStatus = await ConnectivityService.getConnectionStatus();
-      print('⚠️ [Report] Cannot proceed with email report');
+      print('⚠️ [Report] Cannot proceed with email report - QUEUING FOR LATER');
       print('   Connection: $connectionStatus');
       print('   WiFi-Only Mode: ${wifiOnlyMode ? "ON" : "OFF"}');
+
+      // Queue the report for later (when online)
+      await HiveService.saveSetting('pending_${reportType}_report', true);
+      print(
+          '📋 [Report] $reportType report queued for when connection is restored');
+
+      // Show notification that report is queued
+      await _showNotification(
+        'Report Queued 📋',
+        'Your $reportType report will be sent when you\'re back online',
+        isError: false,
+      );
       return;
     }
 
@@ -269,6 +281,9 @@ Pocket Organizer
 
     if (emailSent) {
       print('✅ [Report] Email sent successfully');
+
+      // Clear pending flag (report successfully sent)
+      await HiveService.saveSetting('pending_${reportType}_report', false);
 
       // Add to in-app notifications
       await _addInAppNotification(
@@ -431,13 +446,34 @@ class AutomatedReportService {
         return;
       }
 
-      // Schedule periodic task (every 24 hours)
-      // iOS: minimum 15 minutes, but will respect 24h on production
+      // Get custom report time (default: 9:00 AM)
+      final reportHour =
+          HiveService.getSetting('daily_report_hour', defaultValue: 9) as int;
+      final reportMinute =
+          HiveService.getSetting('daily_report_minute', defaultValue: 0) as int;
+
+      // Calculate initial delay to run at the specified time
+      final now = DateTime.now();
+      DateTime scheduledTime =
+          DateTime(now.year, now.month, now.day, reportHour, reportMinute);
+
+      // If scheduled time has passed today, schedule for tomorrow
+      if (scheduledTime.isBefore(now)) {
+        scheduledTime = scheduledTime.add(const Duration(days: 1));
+      }
+
+      final initialDelay = scheduledTime.difference(now);
+      print(
+          '📅 [AutoReport] Daily report will run at ${reportHour.toString().padLeft(2, '0')}:${reportMinute.toString().padLeft(2, '0')}');
+      print(
+          '   Initial delay: ${initialDelay.inHours}h ${initialDelay.inMinutes % 60}m');
+
+      // Schedule periodic task (every 24 hours at the specified time)
       await Workmanager().registerPeriodicTask(
         BackgroundTasks.dailyReport,
         BackgroundTasks.dailyReport,
         frequency: const Duration(hours: 24),
-        initialDelay: const Duration(hours: 24),
+        initialDelay: initialDelay,
         constraints: Constraints(
           networkType: NetworkType.connected,
         ),
@@ -554,6 +590,8 @@ class AutomatedReportService {
   /// Parse interval string to hours
   static int? _parseIntervalToHours(String interval) {
     switch (interval) {
+      case '2h':
+        return 2;
       case '6h':
         return 6;
       case '8h':
@@ -583,6 +621,67 @@ class AutomatedReportService {
       print('🛑 [AutoReport] All reports and auto-sync cancelled');
     } catch (e) {
       print('❌ [AutoReport] Failed to cancel reports: $e');
+    }
+  }
+
+  /// Process any pending reports that were queued while offline
+  /// This should be called when the app comes back online
+  static Future<void> processPendingReports() async {
+    try {
+      print('🔄 [AutoReport] Checking for pending reports...');
+
+      // Check WiFi-only setting
+      final wifiOnlyMode =
+          HiveService.getSetting('sync_on_wifi_only', defaultValue: true)
+              as bool;
+
+      // Check connectivity
+      final canProceed =
+          await ConnectivityService.canProceedWithNetworkOperation(
+        wifiOnlyMode: wifiOnlyMode,
+      );
+
+      if (!canProceed) {
+        print('⚠️ [AutoReport] Still offline, cannot process pending reports');
+        return;
+      }
+
+      print('✅ [AutoReport] Online - processing pending reports...');
+
+      // Check for pending daily report
+      final pendingDaily =
+          HiveService.getSetting('pending_daily_report', defaultValue: false)
+              as bool;
+      if (pendingDaily) {
+        print('📧 [AutoReport] Sending pending daily report...');
+        await _generateAndSendReport('daily');
+      }
+
+      // Check for pending weekly report
+      final pendingWeekly =
+          HiveService.getSetting('pending_weekly_report', defaultValue: false)
+              as bool;
+      if (pendingWeekly) {
+        print('📧 [AutoReport] Sending pending weekly report...');
+        await _generateAndSendReport('weekly');
+      }
+
+      // Check for pending monthly report
+      final pendingMonthly =
+          HiveService.getSetting('pending_monthly_report', defaultValue: false)
+              as bool;
+      if (pendingMonthly) {
+        print('📧 [AutoReport] Sending pending monthly report...');
+        await _generateAndSendReport('monthly');
+      }
+
+      if (!pendingDaily && !pendingWeekly && !pendingMonthly) {
+        print('✅ [AutoReport] No pending reports to process');
+      } else {
+        print('✅ [AutoReport] All pending reports processed');
+      }
+    } catch (e) {
+      print('❌ [AutoReport] Failed to process pending reports: $e');
     }
   }
 }

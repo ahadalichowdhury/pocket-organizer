@@ -12,6 +12,7 @@ import 'data/services/fcm_service.dart';
 import 'data/services/hive_service.dart';
 import 'data/services/mongodb_service.dart';
 import 'data/services/s3_storage_service.dart';
+import 'data/services/smart_sync_service.dart';
 import 'data/services/user_settings_sync_service.dart';
 import 'data/services/user_sync_service.dart';
 import 'firebase_options.dart';
@@ -92,6 +93,11 @@ class _MyAppState extends ConsumerState<MyApp> {
 
         // Sync FCM token to MongoDB after connection is established
         await FCMService.syncTokenToMongoDB();
+
+        // Initialize Smart Sync Service (handles offline queue & auto-sync)
+        setState(() => _initStatus = 'Setting up smart sync...');
+        await SmartSyncService.initialize();
+        print('✅ Smart sync initialized - automatic background sync enabled');
       } else {
         print('ℹ️ MongoDB not connected - working in local-only mode');
       }

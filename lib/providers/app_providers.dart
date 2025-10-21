@@ -12,6 +12,7 @@ import '../data/services/document_sync_service.dart';
 import '../data/services/folder_sync_service.dart';
 import '../data/services/hive_service.dart';
 import '../data/services/local_auth_service.dart';
+import '../data/services/smart_sync_service.dart';
 
 // Services
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
@@ -264,17 +265,27 @@ class ExpensesNotifier extends StateNotifier<List<ExpenseModel>> {
       recurringPeriod: recurringPeriod,
     );
     await loadExpenses();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncExpenses();
+
     return expense;
   }
 
   Future<void> updateExpense(ExpenseModel expense) async {
     await _repository.updateExpense(expense);
     await loadExpenses();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncExpenses();
   }
 
   Future<void> deleteExpense(String expenseId) async {
     await _repository.deleteExpense(expenseId);
     await loadExpenses();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncExpenses();
   }
 
   List<ExpenseModel> getTodayExpenses() {

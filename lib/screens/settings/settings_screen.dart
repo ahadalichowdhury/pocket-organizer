@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -12,6 +13,7 @@ import '../../data/services/document_sync_service.dart';
 import '../../data/services/expense_sync_service.dart';
 import '../../data/services/folder_sync_service.dart';
 import '../../data/services/hive_service.dart';
+import '../../data/services/smart_sync_service.dart';
 import '../../data/services/user_settings_sync_service.dart';
 import '../../providers/app_providers.dart';
 
@@ -76,6 +78,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   int _getIntervalHours(String interval) {
     switch (interval) {
+      case '2h':
+        return 2;
       case '6h':
         return 6;
       case '8h':
@@ -122,9 +126,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
 
       if (mounted) {
-        setState(() {
-          _lastSyncTime = 'Just now';
-        });
+        // Reload settings to refresh the cached sync time
+        await _loadSettings();
       }
     } catch (e) {
       print('❌ [Sync] Error: $e');
@@ -211,6 +214,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     return;
                   }
 
+                  // Check if credentials are already saved (from login)
+                  final secureStorage = const FlutterSecureStorage();
+                  final savedEmail =
+                      await secureStorage.read(key: 'saved_email');
+
+                  if (savedEmail == null) {
+                    // No credentials saved, inform user
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            '⚠️ Please enable biometric during login. Credentials must be saved securely.'),
+                        backgroundColor: Colors.orange,
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
+                    return;
+                  }
+
                   // Try to authenticate
                   if (!mounted) return;
 
@@ -254,8 +276,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   );
                 }
               } else {
+                // Disable biometric - clear saved credentials
                 setState(() => _biometricEnabled = false);
                 await HiveService.saveSetting('biometric_enabled', false);
+
+                // Clear saved credentials from secure storage
+                final secureStorage = FlutterSecureStorage();
+                await secureStorage.delete(key: 'saved_email');
+                await secureStorage.delete(key: 'saved_password');
 
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -707,6 +735,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final bool hasRecentSync =
         lastSync != null && DateTime.now().difference(lastSync).inHours < 24;
 
+    // Check if there are pending changes in the queue (NEW!)
+    final bool hasPendingChanges = SmartSyncService.hasPendingChanges;
+
+    // Show sync warning if: no recent sync OR has pending changes
+    final bool needsSync = !hasRecentSync || hasPendingChanges;
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -715,8 +749,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: Row(
             children: [
               Icon(
-                hasRecentSync ? Icons.logout : Icons.warning_amber_rounded,
-                color: hasRecentSync ? Colors.blue : Colors.orange,
+                needsSync ? Icons.warning_amber_rounded : Icons.logout,
+                color: needsSync ? Colors.orange : Colors.blue,
               ),
               const SizedBox(width: 12),
               const Text('Log Out?'),
@@ -726,7 +760,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (!hasRecentSync) ...[
+              if (needsSync) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -741,9 +775,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          lastSync == null
-                              ? 'You haven\'t synced your data yet!'
-                              : 'Last sync: ${_formatTimeDifference(lastSync)}',
+                          hasPendingChanges
+                              ? 'You have unsaved changes!'
+                              : lastSync == null
+                                  ? 'You haven\'t synced your data yet!'
+                                  : 'Last sync: ${_formatTimeDifference(lastSync)}',
                           style: const TextStyle(
                             color: Colors.orange,
                             fontSize: 13,
@@ -795,7 +831,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
-            if (!hasRecentSync)
+            if (needsSync)
               ElevatedButton.icon(
                 onPressed: () async {
                   Navigator.pop(context);
@@ -837,7 +873,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               style: TextButton.styleFrom(
                 foregroundColor: Colors.red,
               ),
-              child: Text(hasRecentSync ? 'Log Out' : 'Logout Anyway'),
+              child: Text(needsSync ? 'Logout Anyway' : 'Log Out'),
             ),
           ],
         );
@@ -1282,6 +1318,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
                                   try {
                                     await _performSync();
+
+                                    // Rebuild the modal to show updated time
                                     setState(() => isLoading = false);
 
                                     if (context.mounted) {
@@ -1385,6 +1423,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           'Backup only when you tap "Backup Now"',
                           'manual',
                           Icons.touch_app_outlined),
+                      _buildBackupScheduleOption(setState, 'Every 2 hours',
+                          '12 times a day', '2h', Icons.access_time),
                       _buildBackupScheduleOption(setState, 'Every 6 hours',
                           '4 times a day', '6h', Icons.access_time),
                       _buildBackupScheduleOption(setState, 'Every 8 hours',
