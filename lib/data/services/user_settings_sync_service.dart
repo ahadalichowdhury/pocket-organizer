@@ -95,7 +95,7 @@ class UserSettingsSyncService {
           'alert_threshold', settings.alertThreshold ?? 80.0);
       await HiveService.saveSetting(
           'user_settings_updatedAt', settings.updatedAt.millisecondsSinceEpoch);
-      
+
       // Warranty reminders settings
       await HiveService.saveSetting(
           'warranty_reminders_enabled', settings.warrantyRemindersEnabled);
@@ -198,11 +198,12 @@ class UserSettingsSyncService {
         alertThreshold:
             HiveService.getSetting('alert_threshold', defaultValue: 80.0)
                 as double?,
-        warrantyRemindersEnabled:
-            HiveService.getSetting('warranty_reminders_enabled', defaultValue: false),
-        warrantyReminderDays:
-            HiveService.getSetting('warranty_reminder_days', defaultValue: [30, 7, 1])
-                as List<int>? ?? [30, 7, 1],
+        warrantyRemindersEnabled: HiveService.getSetting(
+            'warranty_reminders_enabled',
+            defaultValue: false),
+        warrantyReminderDays: HiveService.getSetting('warranty_reminder_days',
+                defaultValue: [30, 7, 1]) as List<int>? ??
+            [30, 7, 1],
         updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtMs),
       );
     } catch (e) {
