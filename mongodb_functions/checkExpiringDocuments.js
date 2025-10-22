@@ -17,6 +17,7 @@ exports = async function() {
   const db = mongodb.db("pocket_organizer");
   const documentsCol = db.collection("documents");
   const usersCol = db.collection("users");
+  const userSettingsCol = db.collection("user_settings");
   
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -39,10 +40,21 @@ exports = async function() {
       console.log(`👤 Processing user: ${user.userId}`);
       console.log(`👤 Email: ${user.email}`);
       
-      // Get user's warranty reminder settings from Hive storage
-      // Default to [30, 7, 1] if not set
-      const reminderDays = [30, 7, 1]; // Default reminder days
-      const warrantyRemindersEnabled = true; // Assume enabled if user has documents with expiry dates
+      // Get user's warranty reminder settings from MongoDB
+      const userSettings = await userSettingsCol.findOne({ userId: user.userId });
+      
+      // Use user's preferences or defaults
+      const warrantyRemindersEnabled = userSettings?.warrantyRemindersEnabled ?? false;
+      const reminderDays = userSettings?.warrantyReminderDays ?? [30, 7, 1];
+      
+      console.log(`⚙️ Warranty reminders enabled: ${warrantyRemindersEnabled}`);
+      console.log(`⚙️ Reminder days: [${reminderDays.join(', ')}]`);
+      
+      // Skip if user has disabled warranty reminders
+      if (!warrantyRemindersEnabled) {
+        console.log(`   ⏭️ Warranty reminders disabled for this user, skipping`);
+        continue;
+      }
       
       // Get all documents with expiry dates for this user
       const documents = await documentsCol.find({
@@ -196,7 +208,6 @@ async function sendFCMNotification(fcmToken, notification) {
         notification: {
           sound: "default",
           channelId: "warranty_reminders",
-          priority: notification.daysUntilExpiry <= 7 ? "high" : "default",
           defaultSound: true,
           defaultVibrateTimings: true
         }

@@ -1,6 +1,7 @@
 import 'package:uuid/uuid.dart';
 
 import '../models/document_model.dart';
+import '../services/document_sync_service.dart';
 import '../services/hive_service.dart';
 import '../services/s3_storage_service.dart';
 import 'folder_repository.dart';
@@ -100,6 +101,19 @@ class DocumentRepository {
   Future<void> updateDocument(DocumentModel document) async {
     final updatedDocument = document.copyWith(updatedAt: DateTime.now());
     await HiveService.updateDocument(updatedDocument);
+
+    // Sync to MongoDB in background (non-blocking)
+    _syncDocumentToMongoDB(updatedDocument);
+  }
+
+  /// Sync document to MongoDB (background)
+  void _syncDocumentToMongoDB(DocumentModel document) async {
+    try {
+      await DocumentSyncService.syncDocumentToMongoDB(document);
+      print('✅ [DocumentRepo] Document synced to MongoDB: ${document.title}');
+    } catch (e) {
+      print('⚠️ [DocumentRepo] MongoDB sync failed (will retry later): $e');
+    }
   }
 
   /// Update document image (after cropping)

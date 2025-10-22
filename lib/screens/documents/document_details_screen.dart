@@ -442,17 +442,18 @@ class DocumentDetailsScreen extends ConsumerWidget {
                   await _showMoveToFolderDialog(context, ref, document);
                 },
               ),
-              ListTile(
-                leading: const Icon(Icons.calendar_today, color: Colors.orange),
-                title: const Text('Edit Expiry Date'),
-                subtitle: document.expiryDate != null
-                    ? Text('Current: ${DateFormat('MMM d, y').format(document.expiryDate!)}')
-                    : const Text('No expiry date set'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showEditExpiryDateDialog(context, ref, document);
-                },
-              ),
+              if (document.expiryDate != null)
+                ListTile(
+                  leading:
+                      const Icon(Icons.calendar_today, color: Colors.orange),
+                  title: const Text('Edit Expiry Date'),
+                  subtitle: Text(
+                      'Current: ${DateFormat('MMM d, y').format(document.expiryDate!)}'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showEditExpiryDateDialog(context, ref, document);
+                  },
+                ),
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title:
@@ -999,7 +1000,7 @@ class DocumentDetailsScreen extends ConsumerWidget {
                     style: TextStyle(color: Colors.grey),
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Current expiry date display
                   if (selectedDate != null)
                     Container(
@@ -1037,9 +1038,45 @@ class DocumentDetailsScreen extends ConsumerWidget {
                           ),
                         ],
                       ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event_busy, color: Colors.grey.shade600),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'No Expiry Date',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                Text(
+                                  'Click "Set Date" to add an expiry date',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   const SizedBox(height: 16),
-                  
+
                   // Action buttons
                   Row(
                     children: [
@@ -1048,9 +1085,11 @@ class DocumentDetailsScreen extends ConsumerWidget {
                           onPressed: () async {
                             final picked = await showDatePicker(
                               context: context,
-                              initialDate: selectedDate ?? DateTime.now().add(const Duration(days: 30)),
+                              initialDate: selectedDate ??
+                                  DateTime.now().add(const Duration(days: 30)),
                               firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 3650)),
+                              lastDate: DateTime.now()
+                                  .add(const Duration(days: 3650)),
                             );
                             if (picked != null) {
                               setState(() {
@@ -1059,7 +1098,8 @@ class DocumentDetailsScreen extends ConsumerWidget {
                             }
                           },
                           icon: const Icon(Icons.edit_calendar),
-                          label: Text(selectedDate == null ? 'Set Date' : 'Change'),
+                          label: Text(
+                              selectedDate == null ? 'Set Date' : 'Change'),
                         ),
                       ),
                       if (selectedDate != null) ...[
@@ -1071,7 +1111,8 @@ class DocumentDetailsScreen extends ConsumerWidget {
                             });
                           },
                           icon: const Icon(Icons.clear, color: Colors.red),
-                          label: const Text('Remove', style: TextStyle(color: Colors.red)),
+                          label: const Text('Remove',
+                              style: TextStyle(color: Colors.red)),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Colors.red),
                           ),
@@ -1088,29 +1129,50 @@ class DocumentDetailsScreen extends ConsumerWidget {
                 ),
                 ElevatedButton(
                   onPressed: () async {
+                    print('📅 [ExpiryDate] Saving expiry date...');
+                    print('   selectedDate: $selectedDate');
+                    print('   clearExpiryDate: ${selectedDate == null}');
+
                     // Update document with new expiry date
                     final updatedDoc = document.copyWith(
                       expiryDate: selectedDate,
-                      remindersSent: [], // Reset reminders when date changes
-                      lastReminderSent: null,
+                      clearExpiryDate: selectedDate == null,
+                      clearRemindersSent:
+                          true, // Always reset reminders when changing/clearing date
+                      clearLastReminderSent: true,
                       updatedAt: DateTime.now(),
                     );
 
+                    print('   updatedDoc.expiryDate: ${updatedDoc.expiryDate}');
+
+                    // Update the document
                     await ref
                         .read(documentsProvider.notifier)
                         .updateDocument(updatedDoc);
 
+                    print('✅ [ExpiryDate] Document updated in provider');
+
                     if (context.mounted) {
                       Navigator.pop(context);
+
+                      // Force provider to reload documents to ensure UI updates
+                      await ref
+                          .read(documentsProvider.notifier)
+                          .loadDocuments();
+
+                      print(
+                          '✅ [ExpiryDate] Documents reloaded, UI should refresh now');
+
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Row(
                             children: [
-                              const Icon(Icons.check_circle, color: Colors.white),
+                              const Icon(Icons.check_circle,
+                                  color: Colors.white),
                               const SizedBox(width: 12),
                               Text(selectedDate == null
-                                  ? 'Expiry date removed'
-                                  : 'Expiry date updated'),
+                                  ? 'Expiry date removed ✅'
+                                  : 'Expiry date updated ✅'),
                             ],
                           ),
                           backgroundColor: Colors.green,

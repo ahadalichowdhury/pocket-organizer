@@ -1918,7 +1918,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           });
                           HiveService.saveSetting(
                               'warranty_reminders_enabled', value);
-                          // Note: Warranty settings stored in Hive, read by MongoDB trigger
+
+                          // Sync to MongoDB for trigger to read
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user != null) {
+                            UserSettingsSyncService.updateSetting(
+                              userId: user.uid,
+                              warrantyRemindersEnabled: value,
+                            );
+                            print(
+                                '✅ [Settings] Warranty reminders ${value ? 'enabled' : 'disabled'} and synced to MongoDB');
+                          }
                         },
                       ),
 
@@ -2056,7 +2066,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
         HiveService.saveSetting(
             'warranty_reminder_days', _warrantyReminderDays);
-        // Note: Warranty settings stored in Hive, read by MongoDB trigger
+
+        // Sync to MongoDB for trigger to read
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          UserSettingsSyncService.updateSetting(
+            userId: user.uid,
+            warrantyReminderDays: _warrantyReminderDays,
+          );
+          print(
+              '✅ [Settings] Warranty reminder days updated: $_warrantyReminderDays and synced to MongoDB');
+        }
       },
       title: Text(title),
       subtitle: Text(subtitle),

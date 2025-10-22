@@ -29,8 +29,7 @@ class _ExpiringDocumentsScreenState
       doc.expiryDate!.day,
     );
 
-    final daysUntilExpiry =
-        expiryDate.difference(today).inDays;
+    final daysUntilExpiry = expiryDate.difference(today).inDays;
 
     if (daysUntilExpiry < 0) return 0; // Expired - most urgent
     if (daysUntilExpiry <= 1) return 1; // Critical (0-1 days)
@@ -51,7 +50,11 @@ class _ExpiringDocumentsScreenState
       case 2: // Soon
         return {'emoji': '🟠', 'color': Colors.orange, 'label': 'Soon'};
       case 3: // Upcoming
-        return {'emoji': '🟡', 'color': Colors.yellow.shade700, 'label': 'Upcoming'};
+        return {
+          'emoji': '🟡',
+          'color': Colors.yellow.shade700,
+          'label': 'Upcoming'
+        };
       default: // Valid
         return {'emoji': '🟢', 'color': Colors.green, 'label': 'Valid'};
     }
@@ -113,15 +116,25 @@ class _ExpiringDocumentsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final documentsNotifier = ref.watch(documentsProvider.notifier);
-    final expiringDocuments = documentsNotifier.getExpiringDocuments(365); // Get all with expiry dates
+    // Watch the documents state (not the notifier) to auto-rebuild on changes
+    // ignore: unused_local_variable
+    final documents = ref.watch(documentsProvider);
+    final documentsNotifier = ref.read(documentsProvider.notifier);
+
+    // Get expiring documents from the watched state
+    final expiringDocuments = documentsNotifier
+        .getExpiringDocuments(365); // Get all with expiry dates
     final sortedDocuments = _sortDocuments(expiringDocuments);
 
     // Group by urgency
-    final expired = sortedDocuments.where((d) => _getUrgencyLevel(d) == 0).toList();
-    final critical = sortedDocuments.where((d) => _getUrgencyLevel(d) == 1).toList();
-    final soon = sortedDocuments.where((d) => _getUrgencyLevel(d) == 2).toList();
-    final upcoming = sortedDocuments.where((d) => _getUrgencyLevel(d) == 3).toList();
+    final expired =
+        sortedDocuments.where((d) => _getUrgencyLevel(d) == 0).toList();
+    final critical =
+        sortedDocuments.where((d) => _getUrgencyLevel(d) == 1).toList();
+    final soon =
+        sortedDocuments.where((d) => _getUrgencyLevel(d) == 2).toList();
+    final upcoming =
+        sortedDocuments.where((d) => _getUrgencyLevel(d) == 3).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -141,7 +154,9 @@ class _ExpiringDocumentsScreenState
                   children: [
                     Icon(
                       Icons.priority_high,
-                      color: _sortBy == 'urgency' ? Theme.of(context).primaryColor : null,
+                      color: _sortBy == 'urgency'
+                          ? Theme.of(context).primaryColor
+                          : null,
                     ),
                     const SizedBox(width: 8),
                     const Text('Sort by Urgency'),
@@ -158,7 +173,9 @@ class _ExpiringDocumentsScreenState
                   children: [
                     Icon(
                       Icons.sort_by_alpha,
-                      color: _sortBy == 'name' ? Theme.of(context).primaryColor : null,
+                      color: _sortBy == 'name'
+                          ? Theme.of(context).primaryColor
+                          : null,
                     ),
                     const SizedBox(width: 8),
                     const Text('Sort by Name'),
@@ -175,7 +192,9 @@ class _ExpiringDocumentsScreenState
                   children: [
                     Icon(
                       Icons.calendar_today,
-                      color: _sortBy == 'date' ? Theme.of(context).primaryColor : null,
+                      color: _sortBy == 'date'
+                          ? Theme.of(context).primaryColor
+                          : null,
                     ),
                     const SizedBox(width: 8),
                     const Text('Sort by Date'),
@@ -237,10 +256,14 @@ class _ExpiringDocumentsScreenState
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              _buildSummaryItem('⚫', 'Expired', expired.length, Colors.grey),
-                              _buildSummaryItem('🔴', 'Critical', critical.length, Colors.red),
-                              _buildSummaryItem('🟠', 'Soon', soon.length, Colors.orange),
-                              _buildSummaryItem('🟡', 'Upcoming', upcoming.length, Colors.yellow.shade700),
+                              _buildSummaryItem(
+                                  '⚫', 'Expired', expired.length, Colors.grey),
+                              _buildSummaryItem('🔴', 'Critical',
+                                  critical.length, Colors.red),
+                              _buildSummaryItem(
+                                  '🟠', 'Soon', soon.length, Colors.orange),
+                              _buildSummaryItem('🟡', 'Upcoming',
+                                  upcoming.length, Colors.yellow.shade700),
                             ],
                           ),
                         ],
@@ -256,12 +279,14 @@ class _ExpiringDocumentsScreenState
                       padding: const EdgeInsets.all(12),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                          const Icon(Icons.info_outline,
+                              color: Colors.blue, size: 20),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               '⚫ Expired  •  🔴 0-1 days  •  🟠 2-7 days  •  🟡 8-30 days',
-                              style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.blue.shade700),
                             ),
                           ),
                         ],
@@ -280,7 +305,8 @@ class _ExpiringDocumentsScreenState
                       elevation: _getUrgencyLevel(doc) <= 2 ? 3 : 1,
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: (badge['color'] as Color).withOpacity(0.2),
+                          backgroundColor:
+                              (badge['color'] as Color).withOpacity(0.2),
                           child: Text(
                             badge['emoji'],
                             style: const TextStyle(fontSize: 20),
@@ -320,7 +346,8 @@ class _ExpiringDocumentsScreenState
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: (badge['color'] as Color).withOpacity(0.2),
+                                color:
+                                    (badge['color'] as Color).withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
@@ -337,8 +364,8 @@ class _ExpiringDocumentsScreenState
                         onTap: () {
                           Navigator.pushNamed(
                             context,
-                            '/document-detail',
-                            arguments: doc,
+                            '/document-details',
+                            arguments: doc.id,
                           );
                         },
                       ),
@@ -377,4 +404,3 @@ class _ExpiringDocumentsScreenState
     );
   }
 }
-

@@ -121,6 +121,10 @@ class DocumentModel extends HiveObject {
     Map<String, dynamic>? metadata,
     List<String>? remindersSent,
     DateTime? lastReminderSent,
+    bool clearExpiryDate = false, // Flag to explicitly clear expiry date
+    bool clearRemindersSent = false, // Flag to explicitly clear reminders
+    bool clearLastReminderSent =
+        false, // Flag to explicitly clear last reminder
   }) {
     return DocumentModel(
       id: id,
@@ -136,11 +140,14 @@ class DocumentModel extends HiveObject {
       classificationConfidence:
           classificationConfidence ?? this.classificationConfidence,
       linkedExpenseId: linkedExpenseId ?? this.linkedExpenseId,
-      expiryDate: expiryDate ?? this.expiryDate,
+      expiryDate: clearExpiryDate ? null : (expiryDate ?? this.expiryDate),
       notes: notes ?? this.notes,
       metadata: metadata ?? this.metadata,
-      remindersSent: remindersSent ?? this.remindersSent,
-      lastReminderSent: lastReminderSent ?? this.lastReminderSent,
+      remindersSent:
+          clearRemindersSent ? [] : (remindersSent ?? this.remindersSent),
+      lastReminderSent: clearLastReminderSent
+          ? null
+          : (lastReminderSent ?? this.lastReminderSent),
     );
   }
 

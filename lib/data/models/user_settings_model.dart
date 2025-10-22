@@ -11,6 +11,9 @@ class UserSettingsModel {
   final double? weeklyBudget; // Weekly budget limit
   final double? monthlyBudget; // Monthly budget limit
   final double? alertThreshold; // Alert threshold percentage (0-100)
+  final bool warrantyRemindersEnabled; // Enable warranty/expiry reminders
+  final List<int>
+      warrantyReminderDays; // Days before expiry to remind [30, 7, 1]
   final DateTime updatedAt;
 
   UserSettingsModel({
@@ -26,6 +29,8 @@ class UserSettingsModel {
     this.weeklyBudget,
     this.monthlyBudget,
     this.alertThreshold,
+    this.warrantyRemindersEnabled = false,
+    this.warrantyReminderDays = const [30, 7, 1],
     required this.updatedAt,
   });
 
@@ -41,6 +46,8 @@ class UserSettingsModel {
     double? weeklyBudget,
     double? monthlyBudget,
     double? alertThreshold,
+    bool? warrantyRemindersEnabled,
+    List<int>? warrantyReminderDays,
     DateTime? updatedAt,
   }) {
     return UserSettingsModel(
@@ -56,6 +63,9 @@ class UserSettingsModel {
       weeklyBudget: weeklyBudget ?? this.weeklyBudget,
       monthlyBudget: monthlyBudget ?? this.monthlyBudget,
       alertThreshold: alertThreshold ?? this.alertThreshold,
+      warrantyRemindersEnabled:
+          warrantyRemindersEnabled ?? this.warrantyRemindersEnabled,
+      warrantyReminderDays: warrantyReminderDays ?? this.warrantyReminderDays,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -74,6 +84,8 @@ class UserSettingsModel {
       'weeklyBudget': weeklyBudget,
       'monthlyBudget': monthlyBudget,
       'alertThreshold': alertThreshold,
+      'warrantyRemindersEnabled': warrantyRemindersEnabled,
+      'warrantyReminderDays': warrantyReminderDays,
       'updatedAt': updatedAt.toIso8601String(),
     };
   }
@@ -94,6 +106,11 @@ class UserSettingsModel {
       weeklyBudget: json['weeklyBudget'] as double?,
       monthlyBudget: json['monthlyBudget'] as double?,
       alertThreshold: json['alertThreshold'] as double?,
+      warrantyRemindersEnabled:
+          json['warrantyRemindersEnabled'] as bool? ?? false,
+      warrantyReminderDays: json['warrantyReminderDays'] != null
+          ? List<int>.from(json['warrantyReminderDays'] as List)
+          : [30, 7, 1],
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
   }

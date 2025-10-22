@@ -95,6 +95,12 @@ class UserSettingsSyncService {
           'alert_threshold', settings.alertThreshold ?? 80.0);
       await HiveService.saveSetting(
           'user_settings_updatedAt', settings.updatedAt.millisecondsSinceEpoch);
+      
+      // Warranty reminders settings
+      await HiveService.saveSetting(
+          'warranty_reminders_enabled', settings.warrantyRemindersEnabled);
+      await HiveService.saveSetting(
+          'warranty_reminder_days', settings.warrantyReminderDays);
 
       print('✅ [SettingsSync] Settings saved locally');
       print('   Dark mode: ${settings.isDarkMode}');
@@ -105,6 +111,8 @@ class UserSettingsSyncService {
       print('   Alert threshold: ${settings.alertThreshold}%');
       print(
           '   Auto sync: ${settings.autoSyncEnabled} (${settings.autoSyncInterval}h)');
+      print('   Warranty reminders: ${settings.warrantyRemindersEnabled}');
+      print('   Warranty days: ${settings.warrantyReminderDays}');
     } catch (e) {
       print('❌ [SettingsSync] Error saving settings locally: $e');
     }
@@ -190,6 +198,11 @@ class UserSettingsSyncService {
         alertThreshold:
             HiveService.getSetting('alert_threshold', defaultValue: 80.0)
                 as double?,
+        warrantyRemindersEnabled:
+            HiveService.getSetting('warranty_reminders_enabled', defaultValue: false),
+        warrantyReminderDays:
+            HiveService.getSetting('warranty_reminder_days', defaultValue: [30, 7, 1])
+                as List<int>? ?? [30, 7, 1],
         updatedAt: DateTime.fromMillisecondsSinceEpoch(updatedAtMs),
       );
     } catch (e) {
@@ -282,6 +295,8 @@ class UserSettingsSyncService {
     double? weeklyBudget,
     double? monthlyBudget,
     double? alertThreshold,
+    bool? warrantyRemindersEnabled,
+    List<int>? warrantyReminderDays,
   }) async {
     try {
       // Load current settings
@@ -301,6 +316,8 @@ class UserSettingsSyncService {
         weeklyBudget: weeklyBudget,
         monthlyBudget: monthlyBudget,
         alertThreshold: alertThreshold,
+        warrantyRemindersEnabled: warrantyRemindersEnabled,
+        warrantyReminderDays: warrantyReminderDays,
         updatedAt: DateTime.now(),
       );
 
