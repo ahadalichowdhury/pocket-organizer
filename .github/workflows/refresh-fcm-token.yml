@@ -1,12 +1,12 @@
 name: Refresh FCM Access Token
 
-# This workflow automatically refreshes the FCM access token every hour
-# and updates it in MongoDB Atlas
+# This workflow automatically refreshes the FCM access token every 30 minutes
+# Firebase tokens expire after 1 hour, so 30-minute refresh provides safety buffer
 
 on:
   schedule:
-    # Runs every hour at minute 0
-    - cron: "0 * * * *"
+    # Runs every 30 minutes (at :00 and :30 past every hour)
+    - cron: "0,30 * * * *"
 
   # Allow manual trigger for testing
   workflow_dispatch:
@@ -159,7 +159,7 @@ jobs:
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "🎉 FCM Token refresh completed successfully!"
-            echo "Next refresh in 1 hour"
+            echo "Next refresh in 30 minutes"
           else
             echo "❌ FCM Token refresh failed!"
             echo "Check the logs above for details"
