@@ -1918,8 +1918,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           });
                           HiveService.saveSetting(
                               'warranty_reminders_enabled', value);
-                          UserSettingsSyncService.updateSetting(
-                              'warranty_reminders_enabled', value);
+                          // Note: Warranty settings stored in Hive, read by MongoDB trigger
                         },
                       ),
 
@@ -2057,8 +2056,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
         HiveService.saveSetting(
             'warranty_reminder_days', _warrantyReminderDays);
-        UserSettingsSyncService.updateSetting(
-            'warranty_reminder_days', _warrantyReminderDays);
+        // Note: Warranty settings stored in Hive, read by MongoDB trigger
       },
       title: Text(title),
       subtitle: Text(subtitle),

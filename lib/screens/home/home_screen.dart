@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/document_model.dart';
 import '../../data/services/hive_service.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/document_tile.dart';
 import '../../widgets/folder_card.dart';
+import '../documents/expiring_documents_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -187,21 +189,114 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // Expiring Documents Alert
               if (expiringDocuments.isNotEmpty) ...[
                 _buildSectionHeader(context, 'Expiring Soon', () {
-                  // Show all expiring documents
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ExpiringDocumentsScreen(),
+                    ),
+                  );
                 }),
                 const SizedBox(height: 12),
                 Card(
+                  elevation: 2,
                   color: Colors.orange.shade50,
-                  child: ListTile(
-                    leading: Icon(Icons.warning_amber,
-                        color: Colors.orange.shade700),
-                    title: Text(
-                        '${expiringDocuments.length} documents expiring soon'),
-                    subtitle: const Text('Tap to view details'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  child: InkWell(
                     onTap: () {
-                      // Navigate to expiring documents
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ExpiringDocumentsScreen(),
+                        ),
+                      );
                     },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Colors.orange.shade700,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${expiringDocuments.length} document${expiringDocuments.length != 1 ? 's' : ''} expiring soon',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange.shade900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Within next 30 days',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.orange.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: Colors.orange.shade700,
+                              ),
+                            ],
+                          ),
+                          if (expiringDocuments.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Divider(height: 1),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Text(
+                                  _getUrgencyEmoji(_getMostUrgentDocument(expiringDocuments)),
+                                  style: const TextStyle(fontSize: 18),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Most urgent: ${_getMostUrgentDocument(expiringDocuments)?.title ?? "Unknown"}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  _getDaysUntilExpiry(_getMostUrgentDocument(expiringDocuments)),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -392,5 +487,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
     );
+  }
+
+  /// Get the most urgent document (closest to expiry)
+  DocumentModel? _getMostUrgentDocument(List<DocumentModel> documents) {
+    if (documents.isEmpty) return null;
+
+    return documents.reduce((a, b) {
+      if (a.expiryDate == null) return b;
+      if (b.expiryDate == null) return a;
+
+      final now = DateTime.now();
+      final daysA = a.expiryDate!.difference(now).inDays;
+      final daysB = b.expiryDate!.difference(now).inDays;
+
+      return daysA < daysB ? a : b;
+    });
+  }
+
+  /// Get days until expiry text
+  String _getDaysUntilExpiry(DocumentModel? doc) {
+    if (doc?.expiryDate == null) return '';
+
+    final now = DateTime.now();
+    final days = doc!.expiryDate!.difference(now).inDays;
+
+    if (days < 0) return 'Expired';
+    if (days == 0) return 'Today!';
+    if (days == 1) return '1 day';
+    return '$days days';
+  }
+
+  /// Get urgency emoji
+  String _getUrgencyEmoji(DocumentModel? doc) {
+    if (doc?.expiryDate == null) return '🟢';
+
+    final now = DateTime.now();
+    final days = doc!.expiryDate!.difference(now).inDays;
+
+    if (days < 0) return '⚫'; // Expired
+    if (days <= 1) return '🔴'; // Critical
+    if (days <= 7) return '🟠'; // Soon
+    if (days <= 30) return '🟡'; // Upcoming
+    return '🟢'; // Valid
   }
 }

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../data/models/document_model.dart';
 import '../../data/services/image_cache_service.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/full_screen_image_viewer.dart';
@@ -439,6 +440,17 @@ class DocumentDetailsScreen extends ConsumerWidget {
                 onTap: () async {
                   Navigator.pop(context);
                   await _showMoveToFolderDialog(context, ref, document);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_today, color: Colors.orange),
+                title: const Text('Edit Expiry Date'),
+                subtitle: document.expiryDate != null
+                    ? Text('Current: ${DateFormat('MMM d, y').format(document.expiryDate!)}')
+                    : const Text('No expiry date set'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditExpiryDateDialog(context, ref, document);
                 },
               ),
               ListTile(
@@ -950,6 +962,166 @@ class DocumentDetailsScreen extends ConsumerWidget {
                   ],
                 );
               },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Show dialog to edit or remove expiry date
+  static void _showEditExpiryDateDialog(
+    BuildContext context,
+    WidgetRef ref,
+    DocumentModel document,
+  ) {
+    DateTime? selectedDate = document.expiryDate;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.calendar_today, color: Colors.orange),
+                  SizedBox(width: 12),
+                  Text('Edit Expiry Date'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Set when this document expires (warranty, return policy, etc.)',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  // Current expiry date display
+                  if (selectedDate != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.event, color: Colors.orange.shade700),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Expiry Date',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                                Text(
+                                  DateFormat('MMMM d, y').format(selectedDate!),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  
+                  // Action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate ?? DateTime.now().add(const Duration(days: 30)),
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 3650)),
+                            );
+                            if (picked != null) {
+                              setState(() {
+                                selectedDate = picked;
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.edit_calendar),
+                          label: Text(selectedDate == null ? 'Set Date' : 'Change'),
+                        ),
+                      ),
+                      if (selectedDate != null) ...[
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              selectedDate = null;
+                            });
+                          },
+                          icon: const Icon(Icons.clear, color: Colors.red),
+                          label: const Text('Remove', style: TextStyle(color: Colors.red)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Update document with new expiry date
+                    final updatedDoc = document.copyWith(
+                      expiryDate: selectedDate,
+                      remindersSent: [], // Reset reminders when date changes
+                      lastReminderSent: null,
+                      updatedAt: DateTime.now(),
+                    );
+
+                    await ref
+                        .read(documentsProvider.notifier)
+                        .updateDocument(updatedDoc);
+
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              const Icon(Icons.check_circle, color: Colors.white),
+                              const SizedBox(width: 12),
+                              Text(selectedDate == null
+                                  ? 'Expiry date removed'
+                                  : 'Expiry date updated'),
+                            ],
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
             );
           },
         );

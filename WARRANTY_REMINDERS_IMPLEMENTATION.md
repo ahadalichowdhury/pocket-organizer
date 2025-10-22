@@ -9,9 +9,11 @@ This document provides a complete guide for the Warranty Reminders feature imple
 ## ✅ **COMPLETED - Phase 1 (Core Backend & Settings)**
 
 ### 1. Document Model Updates ✅
+
 **File:** `lib/data/models/document_model.dart`
 
 Added tracking fields:
+
 ```dart
 @HiveField(15)
 List<String>? remindersSent; // e.g., ["30d_2024-10-25", "7d_2024-10-25"]
@@ -21,6 +23,7 @@ DateTime? lastReminderSent;
 ```
 
 ### 2. Settings Page UI ✅
+
 **File:** `lib/screens/settings/settings_screen.dart`
 
 - Multi-select warranty reminder days (30, 14, 7, 1 days)
@@ -29,6 +32,7 @@ DateTime? lastReminderSent;
 - Real-time settings sync to MongoDB
 
 ### 3. MongoDB Trigger ✅
+
 **File:** `mongodb_functions/checkExpiringDocuments.js`
 
 - Runs daily at 9:00 AM
@@ -42,9 +46,11 @@ DateTime? lastReminderSent;
 ## 🚧 **TODO - Remaining Implementation**
 
 ### 4. FCM Notification Handling (Flutter Side)
+
 **File to create/modify:** `lib/data/services/fcm_service.dart`
 
 Add handler for warranty expiry notifications:
+
 ```dart
 // In _handleNotification method, add new case:
 case 'warranty_expiry':
@@ -54,9 +60,11 @@ case 'warranty_expiry':
 ```
 
 ### 5. Home Page - Expiring Soon Card
+
 **File to modify:** `lib/screens/home/home_screen.dart`
 
 Add card showing:
+
 ```dart
 ┌─────────────────────────────────────┐
 │ ⚠️ Expiring Soon                    │
@@ -69,18 +77,22 @@ Add card showing:
 ```
 
 ### 6. Filtered Expiring Documents View
+
 **File to create:** `lib/screens/documents/expiring_documents_screen.dart`
 
 Features:
+
 - List of expiring documents
 - Status badges (🟢🟡🟠🔴)
 - Smart sorting by urgency
 - Quick actions (edit expiry, view document)
 
 ### 7. Document Edit Menu
+
 **File to modify:** `lib/screens/documents/document_detail_screen.dart`
 
 Add options in 3-dot menu:
+
 - Edit Expiry Date
 - Remove Expiry Date
 - Set as Warranty
@@ -94,6 +106,7 @@ Add options in 3-dot menu:
 1. Go to MongoDB Atlas → Your Cluster → Triggers
 2. Click "Add Trigger"
 3. Configure:
+
    - **Trigger Type:** Scheduled
    - **Name:** `CheckExpiringDocuments`
    - **Schedule Type:** Advanced (Cron Expression)
@@ -107,6 +120,7 @@ Add options in 3-dot menu:
 ### Step 2: Verify FCM Access Token
 
 Ensure the `fcm_access_token` value exists in MongoDB Atlas App Services:
+
 - Go to Values → fcm_access_token
 - Should be updated every 30 minutes by GitHub Action
 
@@ -121,12 +135,14 @@ Ensure the `fcm_access_token` value exists in MongoDB Atlas App Services:
 ## 🧪 **Testing Checklist**
 
 ### Settings Page:
+
 - [ ] Toggle warranty reminders on/off
 - [ ] Select multiple reminder days
 - [ ] Settings persist after app restart
 - [ ] Settings sync to MongoDB
 
 ### MongoDB Trigger:
+
 - [ ] Trigger runs at 9:00 AM daily
 - [ ] Correctly calculates days until expiry
 - [ ] Sends FCM notifications
@@ -134,17 +150,20 @@ Ensure the `fcm_access_token` value exists in MongoDB Atlas App Services:
 - [ ] Handles multiple documents per user
 
 ### Notifications:
+
 - [ ] Push notification appears
 - [ ] Notification shows correct document name
 - [ ] Notification shows correct days until expiry
 - [ ] Clicking notification opens app
 
 ### Home Page:
+
 - [ ] Shows count of expiring documents
 - [ ] Shows most urgent document
 - [ ] Clicking opens filtered view
 
 ### Document Management:
+
 - [ ] Can set expiry date on new documents
 - [ ] Can edit expiry date
 - [ ] Can remove expiry date
@@ -187,6 +206,7 @@ Ensure the `fcm_access_token` value exists in MongoDB Atlas App Services:
 ## 🚀 **Deployment Steps**
 
 ### 1. Flutter App:
+
 ```bash
 # Regenerate Hive adapters
 dart run build_runner build --delete-conflicting-outputs
@@ -199,11 +219,13 @@ flutter build apk --split-per-abi
 ```
 
 ### 2. MongoDB:
+
 - Deploy the trigger in Atlas
 - Verify it runs successfully
 - Check logs for any errors
 
 ### 3. GitHub Action:
+
 - Already set up for FCM token refresh every 30 minutes
 
 ---
@@ -223,15 +245,18 @@ flutter build apk --split-per-abi
 ## 📞 **Support & Troubleshooting**
 
 ### Issue: Notifications not received
+
 - Check FCM token is set for user in MongoDB
 - Verify trigger is running (check logs)
 - Ensure `fcm_access_token` is valid
 
 ### Issue: Duplicate notifications
+
 - Check `remindersSent` array in document
 - Verify trigger logic for duplicate prevention
 
 ### Issue: Wrong days count
+
 - Check timezone settings in MongoDB trigger
 - Verify date calculation logic
 
@@ -257,4 +282,3 @@ flutter build apk --split-per-abi
 **Created:** October 22, 2024  
 **Last Updated:** October 22, 2024  
 **Version:** 1.0 (Phase 1 Complete)
-
