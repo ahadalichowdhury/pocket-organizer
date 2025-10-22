@@ -15,6 +15,9 @@ class HiveService {
   static String? _currentUserId;
   static bool _isInitialized = false;
 
+  /// Get current logged in user ID (null if no user logged in)
+  static String? get currentUserId => _currentUserId;
+
   /// Initialize Hive (only registers adapters, doesn't open user boxes)
   static Future<void> init() async {
     if (_isInitialized) return;

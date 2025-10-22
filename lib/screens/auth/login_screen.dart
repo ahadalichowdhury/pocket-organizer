@@ -174,6 +174,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
         // Download data from MongoDB
         print('🔐 [Login] Downloading data from MongoDB...');
+
+        // Clear any existing local data first (to ensure fresh sync)
+        print('🔐 [Login] Clearing existing local data...');
+        await HiveService.clearAllData();
+        print('🔐 [Login] Local data cleared, starting fresh download');
+
         final foldersFuture = FolderSyncService.downloadFoldersFromMongoDB();
         final documentsFuture =
             DocumentSyncService.downloadDocumentsFromMongoDB();

@@ -186,6 +186,12 @@ class NativeNetworkService {
     print('📡 [NativeNetwork] ==========================================');
 
     try {
+      // Check if user boxes are open (prevent race condition during app startup)
+      if (HiveService.currentUserId == null) {
+        print('⚠️ [NativeNetwork] User not logged in yet, skipping backup');
+        return;
+      }
+
       // Check if auto-sync is enabled
       final autoSyncEnabled =
           HiveService.getSetting('auto_sync_enabled', defaultValue: false)

@@ -934,7 +934,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Daily Reports'),
                       subtitle:
-                          const Text('Sent every day at 1:28 PM (TESTING)'),
+                          const Text('Sent every day at 9:00 AM'),
                       value: dailyEnabled,
                       onChanged: (value) async {
                         setState(() => dailyEnabled = value);
@@ -943,7 +943,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         // Schedule or cancel daily reports using native AlarmManager
                         if (value) {
                           await NativeNetworkService.scheduleDailyEmailReport(
-                              hour: 13, minute: 42); // 1:22 PM for testing
+                              hour: 9, minute: 0); // 9:00 AM production
                         } else {
                           await NativeNetworkService.cancelDailyEmailReport();
                         }
