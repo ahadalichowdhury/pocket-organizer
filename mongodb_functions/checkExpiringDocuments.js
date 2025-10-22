@@ -135,8 +135,8 @@ exports = async function() {
             await sendFCMNotification(user.fcmToken, notification);
           }
           
-          // TODO: Send grouped email digest
-          // await sendEmailDigest(user.email, notificationsToSend);
+          // Send email trigger via FCM data message (app will send email via Gmail SMTP)
+          await sendEmailTrigger(user.fcmToken, user.email, notificationsToSend);
           
           totalNotifications += notificationsToSend.length;
           totalUsersNotified++;
@@ -241,11 +241,78 @@ async function sendFCMNotification(fcmToken, notification) {
 }
 
 /**
- * Helper: Send Email Digest (Grouped)
- * TODO: Implement email digest functionality
+ * Helper: Send Email Trigger via FCM Data Message
+ * Sends a silent FCM message to the app, which will then send the email via Gmail SMTP
  */
-async function sendEmailDigest(userEmail, notifications) {
-  // TODO: Implement email sending via SendGrid or similar service
-  console.log(`  📧 Email digest (${notifications.length} items) - Not implemented yet`);
+async function sendEmailTrigger(fcmToken, userEmail, notifications) {
+  try {
+    console.log(`  📧 Sending email trigger to app for: ${userEmail} (${notifications.length} documents)`);
+    
+    const fcmAccessToken = context.values.get("fcm_access_token");
+    
+    if (!fcmAccessToken) {
+      console.log(`  ❌ FCM access token not found in Atlas Values`);
+      return false;
+    }
+    
+    // Prepare notification data as JSON string (FCM data messages only accept strings)
+    const notificationsData = notifications.map(n => ({
+      documentName: n.documentName,
+      daysUntilExpiry: n.daysUntilExpiry,
+      expiryDate: n.expiryDate,
+      folderName: n.folderName || '',
+      urgency: n.daysUntilExpiry <= 1 ? 'critical' : n.daysUntilExpiry <= 7 ? 'high' : n.daysUntilExpiry <= 14 ? 'medium' : 'low'
+    }));
+    
+    // Send FCM data message (silent, no notification UI)
+    const message = {
+      message: {
+        token: fcmToken,
+        data: {
+          type: 'warranty_email_trigger',
+          recipient_email: userEmail,
+          document_count: notifications.length.toString(),
+          notifications_json: JSON.stringify(notificationsData),
+          timestamp: new Date().toISOString()
+        },
+        android: {
+          priority: 'high',
+          // No notification block = silent data message
+        },
+        apns: {
+          headers: {
+            'apns-priority': '10'
+          },
+          payload: {
+            aps: {
+              'content-available': 1 // Silent notification for iOS
+            }
+          }
+        }
+      }
+    };
+    
+    const response = await context.http.post({
+      url: `https://fcm.googleapis.com/v1/projects/pocket-organizer-b01f8/messages:send`,
+      headers: {
+        'Authorization': [`Bearer ${fcmAccessToken}`],
+        'Content-Type': ['application/json']
+      },
+      body: JSON.stringify(message)
+    });
+    
+    if (response.statusCode === 200) {
+      console.log(`  ✅ Email trigger sent to app via FCM`);
+      console.log(`     App will send email using Gmail SMTP`);
+      return true;
+    } else {
+      console.log(`  ❌ Email trigger failed (Status: ${response.statusCode})`);
+      console.log(`     Response: ${response.body.text()}`);
+      return false;
+    }
+  } catch (error) {
+    console.log(`  ❌ Error sending email trigger: ${error.message}`);
+    return false;
+  }
 }
 
