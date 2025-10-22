@@ -49,6 +49,13 @@ class DocumentModel extends HiveObject {
   @HiveField(14)
   Map<String, dynamic>? metadata;
 
+  @HiveField(15)
+  List<String>?
+      remindersSent; // Track which reminders were sent (e.g., ["30d_2024-10-25", "7d_2024-10-25"])
+
+  @HiveField(16)
+  DateTime? lastReminderSent; // When was the last reminder sent
+
   DocumentModel({
     required this.id,
     required this.title,
@@ -65,6 +72,8 @@ class DocumentModel extends HiveObject {
     this.expiryDate,
     this.notes,
     this.metadata,
+    this.remindersSent,
+    this.lastReminderSent,
   });
 
   factory DocumentModel.create({
@@ -110,6 +119,8 @@ class DocumentModel extends HiveObject {
     DateTime? expiryDate,
     String? notes,
     Map<String, dynamic>? metadata,
+    List<String>? remindersSent,
+    DateTime? lastReminderSent,
   }) {
     return DocumentModel(
       id: id,
@@ -128,6 +139,8 @@ class DocumentModel extends HiveObject {
       expiryDate: expiryDate ?? this.expiryDate,
       notes: notes ?? this.notes,
       metadata: metadata ?? this.metadata,
+      remindersSent: remindersSent ?? this.remindersSent,
+      lastReminderSent: lastReminderSent ?? this.lastReminderSent,
     );
   }
 
@@ -148,6 +161,8 @@ class DocumentModel extends HiveObject {
       'expiryDate': expiryDate?.toIso8601String(),
       'notes': notes,
       'metadata': metadata,
+      'remindersSent': remindersSent,
+      'lastReminderSent': lastReminderSent?.toIso8601String(),
     };
   }
 
@@ -170,6 +185,10 @@ class DocumentModel extends HiveObject {
           : null,
       notes: json['notes'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>?,
+      remindersSent: (json['remindersSent'] as List<dynamic>?)?.cast<String>(),
+      lastReminderSent: json['lastReminderSent'] != null
+          ? DateTime.parse(json['lastReminderSent'] as String)
+          : null,
     );
   }
 }

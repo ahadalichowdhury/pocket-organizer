@@ -34,6 +34,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _lastSyncTime;
   String _autoSyncInterval = 'manual'; // manual, 6h, 8h, 12h, 24h
 
+  // Warranty Reminders
+  bool _warrantyRemindersEnabled = false;
+  List<int> _warrantyReminderDays = [
+    30,
+    7,
+    1
+  ]; // Default: 30, 7, and 1 day before
+
   @override
   void initState() {
     super.initState();
@@ -50,11 +58,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final autoSync =
         HiveService.getSetting('auto_sync_interval', defaultValue: 'manual')
             as String;
+    final warrantyEnabled = HiveService.getSetting('warranty_reminders_enabled',
+        defaultValue: false);
+    final warrantyDays = HiveService.getSetting('warranty_reminder_days',
+        defaultValue: [30, 7, 1]) as List;
 
     setState(() {
       _biometricEnabled = biometric;
       _notificationsEnabled = notifications;
       _autoSyncInterval = autoSync;
+      _warrantyRemindersEnabled = warrantyEnabled;
+      _warrantyReminderDays = warrantyDays.cast<int>();
       if (lastSync > 0) {
         _lastSyncTime =
             _getRelativeTime(DateTime.fromMillisecondsSinceEpoch(lastSync));
@@ -334,10 +348,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.alarm),
             title: const Text('Warranty Reminders'),
-            subtitle: const Text('Get notified before expiry'),
+            subtitle: Text(_warrantyRemindersEnabled
+                ? 'Enabled (${_warrantyReminderDays.length} reminder${_warrantyReminderDays.length != 1 ? 's' : ''})'
+                : 'Get notified before expiry'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              // Navigate to reminder settings
+              _showWarrantyRemindersSettings(context);
             },
           ),
 
@@ -1857,6 +1873,196 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           },
         );
       },
+    );
+  }
+
+  void _showWarrantyRemindersSettings(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.alarm, color: Colors.orange),
+                  SizedBox(width: 12),
+                  Text('Warranty Reminders'),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Get notified before your warranties expire',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Enable/Disable Toggle
+                      SwitchListTile(
+                        title: const Text('Enable Reminders'),
+                        subtitle: const Text(
+                            'Receive notifications for expiring documents'),
+                        value: _warrantyRemindersEnabled,
+                        onChanged: (bool value) {
+                          setDialogState(() {
+                            _warrantyRemindersEnabled = value;
+                          });
+                          setState(() {
+                            _warrantyRemindersEnabled = value;
+                          });
+                          HiveService.saveSetting(
+                              'warranty_reminders_enabled', value);
+                          UserSettingsSyncService.updateSetting(
+                              'warranty_reminders_enabled', value);
+                        },
+                      ),
+
+                      if (_warrantyRemindersEnabled) ...[
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Remind me:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Reminder day options
+                        _buildReminderDayCheckbox(
+                          setDialogState,
+                          30,
+                          '30 days before',
+                          'One month notice',
+                          Icons.calendar_month,
+                          Colors.green,
+                        ),
+                        _buildReminderDayCheckbox(
+                          setDialogState,
+                          14,
+                          '14 days before',
+                          'Two weeks notice',
+                          Icons.calendar_today,
+                          Colors.blue,
+                        ),
+                        _buildReminderDayCheckbox(
+                          setDialogState,
+                          7,
+                          '7 days before',
+                          'One week notice',
+                          Icons.event,
+                          Colors.orange,
+                        ),
+                        _buildReminderDayCheckbox(
+                          setDialogState,
+                          1,
+                          '1 day before',
+                          'Last day warning',
+                          Icons.warning,
+                          Colors.red,
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Info note
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.info_outline,
+                                  color: Colors.orange, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'How it works',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '• Set expiry dates on your documents\n'
+                                      '• Get push notifications at selected intervals\n'
+                                      '• Receive daily email digest of expiring items\n'
+                                      '• View expiring documents on home page',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.orange.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildReminderDayCheckbox(
+    StateSetter setDialogState,
+    int days,
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+  ) {
+    final bool isSelected = _warrantyReminderDays.contains(days);
+
+    return CheckboxListTile(
+      value: isSelected,
+      onChanged: (bool? value) {
+        setDialogState(() {
+          if (value == true) {
+            _warrantyReminderDays.add(days);
+            _warrantyReminderDays
+                .sort((a, b) => b.compareTo(a)); // Sort descending
+          } else {
+            _warrantyReminderDays.remove(days);
+          }
+        });
+        setState(() {
+          // Update main state
+        });
+        HiveService.saveSetting(
+            'warranty_reminder_days', _warrantyReminderDays);
+        UserSettingsSyncService.updateSetting(
+            'warranty_reminder_days', _warrantyReminderDays);
+      },
+      title: Text(title),
+      subtitle: Text(subtitle),
+      secondary: Icon(icon, color: color),
     );
   }
 }
