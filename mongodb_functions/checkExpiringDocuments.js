@@ -224,7 +224,7 @@ async function sendFCMNotification(fcmToken, notification) {
   };
   
   const response = await context.http.post({
-    url: `https://fcm.googleapis.com/v1/projects/pocket-organizer-55a27/messages:send`,
+    url: `https://fcm.googleapis.com/v1/projects/pocket-organizer-b01f8/messages:send`,
     headers: {
       'Authorization': [`Bearer ${fcm}`],
       'Content-Type': ['application/json']
