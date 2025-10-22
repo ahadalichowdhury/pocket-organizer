@@ -29,32 +29,43 @@ class BackgroundTasks {
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    print('🔄 [Background] ========================================');
     print('🔄 [Background] Task triggered: $task');
+    print('🔄 [Background] Input data: $inputData');
+    print('🔄 [Background] ========================================');
 
     try {
       // Initialize Hive for background task
+      print('🔄 [Background] Initializing Hive...');
       await HiveService.init();
+      print('✅ [Background] Hive initialized');
 
       switch (task) {
         case BackgroundTasks.dailyReport:
-          await _generateAndSendReport('daily');
+          print('📧 [Background] Executing daily report task...');
+          await generateAndSendReport('daily');
           break;
         case BackgroundTasks.weeklyReport:
-          await _generateAndSendReport('weekly');
+          print('📧 [Background] Executing weekly report task...');
+          await generateAndSendReport('weekly');
           break;
         case BackgroundTasks.monthlyReport:
-          await _generateAndSendReport('monthly');
+          print('📧 [Background] Executing monthly report task...');
+          await generateAndSendReport('monthly');
           break;
         case BackgroundTasks.autoSync:
+          print('☁️ [Background] Executing auto-sync task...');
           await _performAutoSync();
           break;
         default:
           print('⚠️ [Background] Unknown task: $task');
       }
 
+      print('✅ [Background] Task completed successfully');
       return Future.value(true);
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ [Background] Task failed: $e');
+      print('❌ [Background] Stack trace: $stackTrace');
       return Future.value(false);
     }
   });
@@ -145,8 +156,9 @@ Future<void> _performAutoSync() async {
   }
 }
 
-/// Generate and send report (called from background task)
-Future<void> _generateAndSendReport(String reportType) async {
+/// Generate and send report (called from background task OR AlarmManager)
+/// This is now public so it can be called from NativeNetworkService
+Future<void> generateAndSendReport(String reportType) async {
   try {
     print('📊 [Report] Generating $reportType report...');
 
@@ -195,9 +207,9 @@ Future<void> _generateAndSendReport(String reportType) async {
 
     switch (reportType) {
       case 'daily':
-        startDate = DateTime(now.year, now.month, now.day)
-            .subtract(const Duration(days: 1));
-        endDate = DateTime(now.year, now.month, now.day);
+        // Daily report: from today's midnight to now
+        startDate = DateTime(now.year, now.month, now.day);
+        endDate = now;
         break;
       case 'weekly':
         startDate = now.subtract(const Duration(days: 7));
@@ -429,6 +441,13 @@ class AutomatedReportService {
 
       final platform = Platform.isAndroid ? 'Android' : 'iOS';
       print('✅ [AutoReport] Workmanager initialized for $platform');
+
+      // Test if callback works
+      print('🧪 [AutoReport] Testing background callback registration...');
+      print(
+          '⚠️ [AutoReport] Note: Background tasks may not work reliably on all devices');
+      print(
+          '💡 [AutoReport] Use manual backup or app-based sync for guaranteed execution');
     } catch (e) {
       print('❌ [AutoReport] Initialization failed: $e');
     }
@@ -446,9 +465,9 @@ class AutomatedReportService {
         return;
       }
 
-      // Get custom report time (default: 9:00 AM)
+      // Get custom report time (default: 11:00 AM for testing)
       final reportHour =
-          HiveService.getSetting('daily_report_hour', defaultValue: 9) as int;
+          HiveService.getSetting('daily_report_hour', defaultValue: 11) as int;
       final reportMinute =
           HiveService.getSetting('daily_report_minute', defaultValue: 0) as int;
 
@@ -477,6 +496,8 @@ class AutomatedReportService {
         constraints: Constraints(
           networkType: NetworkType.connected,
         ),
+        backoffPolicy: BackoffPolicy.exponential,
+        backoffPolicyDelay: const Duration(minutes: 15),
       );
 
       await HiveService.saveSetting('daily_report_enabled', true);
@@ -506,6 +527,8 @@ class AutomatedReportService {
         constraints: Constraints(
           networkType: NetworkType.connected,
         ),
+        backoffPolicy: BackoffPolicy.exponential,
+        backoffPolicyDelay: const Duration(minutes: 15),
       );
 
       await HiveService.saveSetting('weekly_report_enabled', true);
@@ -535,6 +558,8 @@ class AutomatedReportService {
         constraints: Constraints(
           networkType: NetworkType.connected,
         ),
+        backoffPolicy: BackoffPolicy.exponential,
+        backoffPolicyDelay: const Duration(minutes: 15),
       );
 
       await HiveService.saveSetting('monthly_report_enabled', true);
@@ -560,8 +585,47 @@ class AutomatedReportService {
 
       // Parse interval to hours
       final hours = _parseIntervalToHours(interval);
-      if (hours == null) {
+      if (hours == null && interval != '2m') {
         print('❌ [AutoSync] Invalid interval: $interval');
+        return;
+      }
+
+      // Handle 2-minute testing interval specially
+      if (interval == '2m') {
+        print(
+            '📅 [AutoSync] Scheduling auto-sync every 2 minutes (TESTING MODE)...');
+
+        // Schedule periodic task with 15-minute minimum (Android limitation)
+        // But set initial delay to 2 minutes for first run
+        await Workmanager().registerPeriodicTask(
+          BackgroundTasks.autoSync,
+          BackgroundTasks.autoSync,
+          frequency: const Duration(minutes: 15), // Minimum allowed by Android
+          initialDelay: const Duration(minutes: 2), // First run after 2 minutes
+          constraints: Constraints(
+            networkType: NetworkType.connected,
+          ),
+          backoffPolicy: BackoffPolicy.exponential,
+          backoffPolicyDelay: const Duration(minutes: 2),
+        );
+
+        await HiveService.saveSetting('auto_sync_enabled', true);
+        await HiveService.saveSetting('auto_sync_interval', interval);
+
+        // Store the scheduled time for countdown
+        final scheduledTime = DateTime.now().add(const Duration(minutes: 2));
+        await HiveService.saveSetting(
+            'next_backup_time', scheduledTime.millisecondsSinceEpoch);
+
+        print(
+            '✅ [AutoSync] Auto-sync scheduled for testing (first run in 2 minutes, then every 15 minutes)');
+        print(
+            '⏰ [AutoSync] Next backup scheduled for: ${scheduledTime.toString()}');
+        print('⏰ [AutoSync] Current time: ${DateTime.now().toString()}');
+
+        // Start countdown timer
+        _startCountdownTimer();
+
         return;
       }
 
@@ -572,11 +636,13 @@ class AutomatedReportService {
       await Workmanager().registerPeriodicTask(
         BackgroundTasks.autoSync,
         BackgroundTasks.autoSync,
-        frequency: Duration(hours: hours),
+        frequency: Duration(hours: hours!),
         initialDelay: Duration(hours: hours),
         constraints: Constraints(
           networkType: NetworkType.connected,
         ),
+        backoffPolicy: BackoffPolicy.exponential,
+        backoffPolicyDelay: const Duration(minutes: 15),
       );
 
       await HiveService.saveSetting('auto_sync_enabled', true);
@@ -590,6 +656,8 @@ class AutomatedReportService {
   /// Parse interval string to hours
   static int? _parseIntervalToHours(String interval) {
     switch (interval) {
+      case '2m': // 2 minutes for testing
+        return 0; // Will be handled specially below
       case '2h':
         return 2;
       case '6h':
@@ -654,7 +722,7 @@ class AutomatedReportService {
               as bool;
       if (pendingDaily) {
         print('📧 [AutoReport] Sending pending daily report...');
-        await _generateAndSendReport('daily');
+        await generateAndSendReport('daily');
       }
 
       // Check for pending weekly report
@@ -663,7 +731,7 @@ class AutomatedReportService {
               as bool;
       if (pendingWeekly) {
         print('📧 [AutoReport] Sending pending weekly report...');
-        await _generateAndSendReport('weekly');
+        await generateAndSendReport('weekly');
       }
 
       // Check for pending monthly report
@@ -672,7 +740,7 @@ class AutomatedReportService {
               as bool;
       if (pendingMonthly) {
         print('📧 [AutoReport] Sending pending monthly report...');
-        await _generateAndSendReport('monthly');
+        await generateAndSendReport('monthly');
       }
 
       if (!pendingDaily && !pendingWeekly && !pendingMonthly) {
@@ -682,6 +750,82 @@ class AutomatedReportService {
       }
     } catch (e) {
       print('❌ [AutoReport] Failed to process pending reports: $e');
+    }
+  }
+
+  /// Start countdown timer for testing mode (logs every 30 seconds)
+  static void _startCountdownTimer() {
+    final nextBackupTimeMs =
+        HiveService.getSetting('next_backup_time', defaultValue: 0) as int;
+
+    if (nextBackupTimeMs == 0) {
+      print('⚠️ [Countdown] No backup scheduled');
+      return;
+    }
+
+    final targetTime = DateTime.fromMillisecondsSinceEpoch(nextBackupTimeMs);
+
+    print('⏱️  [Countdown] Starting countdown timer...');
+    print('⏱️  [Countdown] Target: ${targetTime.toString()}');
+
+    // Log every 30 seconds for 2 minutes
+    Future.delayed(const Duration(seconds: 30), () {
+      final now = DateTime.now();
+      final remaining = targetTime.difference(now);
+      if (remaining.inSeconds > 0) {
+        print(
+            '⏱️  [Countdown] ${remaining.inSeconds}s remaining until backup...');
+        print('⏱️  [Countdown] Current: ${now.toString()}');
+      }
+    });
+
+    Future.delayed(const Duration(seconds: 60), () {
+      final now = DateTime.now();
+      final remaining = targetTime.difference(now);
+      if (remaining.inSeconds > 0) {
+        print(
+            '⏱️  [Countdown] ${remaining.inSeconds}s remaining until backup...');
+        print('⏱️  [Countdown] Current: ${now.toString()}');
+      }
+    });
+
+    Future.delayed(const Duration(seconds: 90), () {
+      final now = DateTime.now();
+      final remaining = targetTime.difference(now);
+      if (remaining.inSeconds > 0) {
+        print(
+            '⏱️  [Countdown] ${remaining.inSeconds}s remaining until backup...');
+        print('⏱️  [Countdown] Current: ${now.toString()}');
+      }
+    });
+
+    Future.delayed(const Duration(seconds: 120), () {
+      print('⏱️  [Countdown] Time\'s up! Backup should trigger now...');
+      print('⏱️  [Countdown] Current: ${DateTime.now().toString()}');
+    });
+
+    Future.delayed(const Duration(seconds: 150), () {
+      print(
+          '⚠️  [Countdown] 30s past scheduled time - checking if backup ran...');
+      print(
+          '⚠️  [Countdown] If you don\'t see backup logs, WorkManager may not be running');
+      print(
+          '💡 [Countdown] Try: Manual trigger via UI or check battery optimization');
+    });
+  }
+
+  /// Manual trigger for immediate testing (bypasses WorkManager)
+  /// Call this from UI to test the backup function immediately
+  static Future<void> triggerManualTestSync() async {
+    print('🔧 [ManualTest] Manually triggering auto-sync...');
+    print(
+        '🔧 [ManualTest] This bypasses WorkManager and runs sync immediately');
+
+    try {
+      await _performAutoSync();
+      print('✅ [ManualTest] Manual test sync completed successfully');
+    } catch (e) {
+      print('❌ [ManualTest] Manual test sync failed: $e');
     }
   }
 }

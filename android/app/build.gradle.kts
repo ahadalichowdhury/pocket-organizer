@@ -57,4 +57,7 @@ dependencies {
     // Force compatible versions to fix ML Kit issues
     implementation("com.google.android.material:material:1.9.0")
     implementation("androidx.core:core:1.10.1")
+    
+    // Kotlin coroutines for BackupMonitorService
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }

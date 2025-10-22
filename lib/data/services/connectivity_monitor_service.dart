@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'automated_report_service.dart';
 import 'document_sync_service.dart';
 import 'expense_sync_service.dart';
 import 'folder_sync_service.dart';
@@ -81,15 +82,6 @@ class ConnectivityMonitorService {
         return;
       }
 
-      // Check if auto-sync is enabled
-      final autoSyncEnabled =
-          HiveService.getSetting('auto_sync_enabled', defaultValue: false)
-              as bool;
-      if (!autoSyncEnabled) {
-        print('ℹ️ [ConnectivityMonitor] Auto-sync is disabled');
-        return;
-      }
-
       // Check WiFi-only setting
       final wifiOnlyMode =
           HiveService.getSetting('sync_on_wifi_only', defaultValue: true)
@@ -97,6 +89,23 @@ class ConnectivityMonitorService {
       if (wifiOnlyMode && connectionType != 'WiFi') {
         print(
             '⚠️ [ConnectivityMonitor] WiFi-only mode is enabled, but connected to $connectionType');
+        return;
+      }
+
+      // 1. FIRST: Process any pending email reports
+      print('📧 [ConnectivityMonitor] Processing pending email reports...');
+      try {
+        await AutomatedReportService.processPendingReports();
+      } catch (e) {
+        print('❌ [ConnectivityMonitor] Failed to process pending reports: $e');
+      }
+
+      // 2. SECOND: Check if auto-sync is enabled and perform sync
+      final autoSyncEnabled =
+          HiveService.getSetting('auto_sync_enabled', defaultValue: false)
+              as bool;
+      if (!autoSyncEnabled) {
+        print('ℹ️ [ConnectivityMonitor] Auto-sync is disabled, skipping sync');
         return;
       }
 

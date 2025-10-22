@@ -13,6 +13,7 @@ import '../../data/services/document_sync_service.dart';
 import '../../data/services/expense_sync_service.dart';
 import '../../data/services/folder_sync_service.dart';
 import '../../data/services/hive_service.dart';
+import '../../data/services/native_network_service.dart';
 import '../../data/services/smart_sync_service.dart';
 import '../../data/services/user_settings_sync_service.dart';
 import '../../providers/app_providers.dart';
@@ -78,6 +79,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   int _getIntervalHours(String interval) {
     switch (interval) {
+      case '2m': // Testing mode
+        return 0; // Special case for 2 minutes
       case '2h':
         return 2;
       case '6h':
@@ -930,15 +933,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Daily Reports'),
-                      subtitle: const Text('Sent every day at 9:00 AM'),
+                      subtitle:
+                          const Text('Sent every day at 1:28 PM (TESTING)'),
                       value: dailyEnabled,
                       onChanged: (value) async {
                         setState(() => dailyEnabled = value);
                         await HiveService.saveSetting(
                             'daily_report_enabled', value);
-                        // Schedule or cancel daily reports
-                        await AutomatedReportService.scheduleDailyReport(
-                            enabled: value);
+                        // Schedule or cancel daily reports using native AlarmManager
+                        if (value) {
+                          await NativeNetworkService.scheduleDailyEmailReport(
+                              hour: 13, minute: 42); // 1:22 PM for testing
+                        } else {
+                          await NativeNetworkService.cancelDailyEmailReport();
+                        }
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -1115,8 +1123,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             });
             await HiveService.saveSetting('auto_sync_interval', newValue);
 
-            // Schedule auto-sync with AlarmManager
-            await AutomatedReportService.scheduleAutoSync(newValue);
+            // Schedule auto-sync with native AlarmManager (like WhatsApp)
+            if (newValue == 'manual') {
+              // Disable auto-sync
+              await NativeNetworkService.cancelPeriodicBackup();
+            } else {
+              // Parse interval to minutes
+              int intervalMinutes;
+              if (newValue == '2h') {
+                intervalMinutes = 120; // 2 hours
+              } else if (newValue == '6h') {
+                intervalMinutes = 360; // 6 hours
+              } else if (newValue == '8h') {
+                intervalMinutes = 480; // 8 hours
+              } else if (newValue == '12h') {
+                intervalMinutes = 720; // 12 hours
+              } else if (newValue == '24h') {
+                intervalMinutes = 1440; // 24 hours
+              } else {
+                intervalMinutes = 360; // Default to 6 hours
+              }
+
+              // Schedule with native AlarmManager
+              await NativeNetworkService.schedulePeriodicBackup(
+                  intervalMinutes);
+            }
 
             // Sync setting to MongoDB
             final user = FirebaseAuth.instance.currentUser;
@@ -1389,6 +1420,90 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ),
 
+                      const SizedBox(height: 12),
+
+                      // Test Backup Button (for debugging)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                          onPressed: isLoading
+                              ? null
+                              : () async {
+                                  setState(() => isLoading = true);
+
+                                  try {
+                                    print('🧪 [UI] Test backup button pressed');
+                                    await AutomatedReportService
+                                        .triggerManualTestSync();
+
+                                    setState(() => isLoading = false);
+
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Row(
+                                            children: [
+                                              Icon(Icons.science,
+                                                  color: Colors.white),
+                                              SizedBox(width: 12),
+                                              Text(
+                                                  'Test backup completed! Check logs.'),
+                                            ],
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    setState(() => isLoading = false);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Row(
+                                            children: [
+                                              const Icon(Icons.error,
+                                                  color: Colors.white),
+                                              const SizedBox(width: 12),
+                                              Text(
+                                                  'Test backup failed: ${e.toString()}'),
+                                            ],
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.science, size: 24),
+                          label: Text(
+                            isLoading ? 'Testing...' : 'Test Backup (Debug)',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side:
+                                const BorderSide(color: Colors.blue, width: 2),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+
                       const SizedBox(height: 24),
                       const Divider(),
                       const SizedBox(height: 16),
@@ -1423,6 +1538,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           'Backup only when you tap "Backup Now"',
                           'manual',
                           Icons.touch_app_outlined),
+                      // Testing option removed - use production intervals
                       _buildBackupScheduleOption(setState, 'Every 2 hours',
                           '12 times a day', '2h', Icons.access_time),
                       _buildBackupScheduleOption(setState, 'Every 6 hours',

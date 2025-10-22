@@ -11,6 +11,7 @@ import 'data/services/connectivity_monitor_service.dart';
 import 'data/services/fcm_service.dart';
 import 'data/services/hive_service.dart';
 import 'data/services/mongodb_service.dart';
+import 'data/services/native_network_service.dart';
 import 'data/services/s3_storage_service.dart';
 import 'data/services/smart_sync_service.dart';
 import 'data/services/user_settings_sync_service.dart';
@@ -120,6 +121,21 @@ class _MyAppState extends ConsumerState<MyApp> {
       setState(() => _initStatus = 'Setting up budget monitoring...');
       await BudgetMonitorService.initialize();
       print('✅ Budget monitoring service initialized');
+
+      // Initialize native network monitoring (like WhatsApp)
+      setState(() => _initStatus = 'Setting up native network monitoring...');
+      await NativeNetworkService.initialize();
+      print('✅ Native network monitoring initialized');
+
+      // Auto-start foreground service (like WhatsApp)
+      setState(() => _initStatus = 'Starting background monitoring...');
+      try {
+        await NativeNetworkService.startForegroundService();
+        print('✅ Background monitoring service started automatically');
+      } catch (e) {
+        print('⚠️ Could not start background service: $e');
+        print('   App will still work, but WiFi monitoring may be limited');
+      }
 
       setState(() {
         _initStatus = 'Ready!';
@@ -297,6 +313,23 @@ class _AppHomeState extends ConsumerState<AppHome> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     print('🏠 [AppHome] App lifecycle changed: $state');
+
+    // When app comes to foreground, check for pending reports and sync
+    if (state == AppLifecycleState.resumed) {
+      print('🏠 [AppHome] App resumed - checking for pending tasks...');
+      _handleAppResume();
+    }
+  }
+
+  /// Handle app resume - check for pending reports and trigger sync if needed
+  Future<void> _handleAppResume() async {
+    try {
+      // Process any pending email reports
+      print('📧 [AppHome] Processing pending email reports...');
+      await AutomatedReportService.processPendingReports();
+    } catch (e) {
+      print('❌ [AppHome] Error processing pending reports: $e');
+    }
   }
 
   @override
