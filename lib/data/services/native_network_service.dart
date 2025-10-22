@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 
@@ -7,6 +9,7 @@ import 'document_sync_service.dart';
 import 'expense_sync_service.dart';
 import 'folder_sync_service.dart';
 import 'hive_service.dart';
+import 'simple_email_service.dart';
 
 /// Native network monitoring service
 /// This receives callbacks from native Android BroadcastReceiver
@@ -174,6 +177,9 @@ class NativeNetworkService {
         break;
       case 'onDailyEmailReport':
         await _onDailyEmailReport();
+        break;
+      case 'onWarrantyEmailTrigger':
+        await _onWarrantyEmailTrigger(call.arguments);
         break;
       default:
         print('⚠️ [NativeNetwork] Unknown method: ${call.method}');
@@ -344,5 +350,214 @@ class NativeNetworkService {
       print('❌ [NativeNetwork] Error during daily email report: $e');
       AppLogger.error('Daily email report failed: $e');
     }
+  }
+
+  /// Public wrapper for warranty email trigger (called from FCM service)
+  static Future<void> handleWarrantyEmailTrigger(
+      Map<String, dynamic> data) async {
+    await _onWarrantyEmailTrigger(data);
+  }
+
+  /// Called when warranty email trigger is received via FCM data message
+  static Future<void> _onWarrantyEmailTrigger(
+      Map<dynamic, dynamic>? arguments) async {
+    print('📧 [NativeNetwork] ==========================================');
+    print(
+        '📧 [NativeNetwork] WARRANTY EMAIL TRIGGER - FCM data message received!');
+    print('📧 [NativeNetwork] ==========================================');
+    AppLogger.info('Warranty email trigger received from MongoDB');
+
+    try {
+      if (arguments == null) {
+        print('❌ [NativeNetwork] No arguments provided');
+        return;
+      }
+
+      final recipientEmail = arguments['recipient_email'] as String?;
+      final documentCount = arguments['document_count'] as String?;
+      final notificationsJson = arguments['notifications_json'] as String?;
+
+      if (recipientEmail == null || notificationsJson == null) {
+        print('❌ [NativeNetwork] Missing required arguments');
+        print('   recipient_email: $recipientEmail');
+        print(
+            '   notifications_json: ${notificationsJson != null ? "present" : "null"}');
+        return;
+      }
+
+      print('📧 [NativeNetwork] Email Details:');
+      print('   Recipient: $recipientEmail');
+      print('   Document Count: $documentCount');
+      AppLogger.info('Sending warranty email to: $recipientEmail');
+
+      // Parse notifications JSON
+      final List<dynamic> notificationsData = jsonDecode(notificationsJson);
+      final List<Map<String, dynamic>> documents = notificationsData
+          .map((doc) => Map<String, dynamic>.from(doc as Map))
+          .toList();
+
+      print('📧 [NativeNetwork] Parsed ${documents.length} documents');
+      for (final doc in documents) {
+        print('   - ${doc['documentName']}: ${doc['daysUntilExpiry']} days');
+      }
+
+      // Generate HTML email using WarrantyEmailService
+      final emailHtml = _generateWarrantyEmailHtml(recipientEmail, documents);
+      final emailSubject = documents.length == 1
+          ? '⚠️ 1 Document Expiring Soon - Pocket Organizer'
+          : '⚠️ ${documents.length} Documents Expiring Soon - Pocket Organizer';
+
+      print('📤 [NativeNetwork] Sending email via Gmail SMTP...');
+      AppLogger.info('Sending warranty email via Gmail SMTP...');
+
+      // Send email using SimpleEmailService (uses existing Gmail SMTP config)
+      final emailSent = await SimpleEmailService.sendHtmlEmail(
+        recipientEmail: recipientEmail,
+        subject: emailSubject,
+        htmlBody: emailHtml,
+      );
+
+      if (emailSent) {
+        print('✅ [NativeNetwork] Warranty email sent successfully!');
+        AppLogger.success('Warranty email sent to: $recipientEmail');
+      } else {
+        print('❌ [NativeNetwork] Failed to send warranty email');
+        AppLogger.error('Failed to send warranty email to: $recipientEmail');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [NativeNetwork] Error during warranty email trigger: $e');
+      print('   Stack trace: $stackTrace');
+      AppLogger.error('Warranty email trigger failed: $e');
+    }
+  }
+
+  /// Generate HTML email for warranty reminders
+  static String _generateWarrantyEmailHtml(
+    String recipientEmail,
+    List<Map<String, dynamic>> documents,
+  ) {
+    // Sort by urgency (most urgent first)
+    documents.sort((a, b) =>
+        (a['daysUntilExpiry'] as int).compareTo(b['daysUntilExpiry'] as int));
+
+    // Generate document list HTML
+    final documentListHtml = documents.map((doc) {
+      final name = doc['documentName'] ?? 'Unknown Document';
+      final days = doc['daysUntilExpiry'] as int? ?? 0;
+      final expiryDate = doc['expiryDate'] ?? 'Unknown';
+      final folder = doc['folderName'] ?? '';
+
+      final String borderColor;
+      final String bgColor;
+      final String textColor;
+      final String urgencyEmoji;
+
+      if (days <= 1) {
+        borderColor = '#D32F2F';
+        bgColor = '#FFEBEE';
+        textColor = '#C62828';
+        urgencyEmoji = '🔴';
+      } else if (days <= 7) {
+        borderColor = '#F57C00';
+        bgColor = '#FFF3E0';
+        textColor = '#E65100';
+        urgencyEmoji = '🟠';
+      } else if (days <= 14) {
+        borderColor = '#FBC02D';
+        bgColor = '#FFFDE7';
+        textColor = '#F57F17';
+        urgencyEmoji = '🟡';
+      } else {
+        borderColor = '#388E3C';
+        bgColor = '#F1F8E9';
+        textColor = '#2E7D32';
+        urgencyEmoji = '🟢';
+      }
+
+      return '''
+        <div style="background-color: $bgColor; padding: 20px; border-radius: 10px; margin: 0 0 16px 0; border-left: 5px solid $borderColor; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+          <h3 style="margin: 0 0 12px 0; color: $textColor; font-size: 18px; font-weight: 600; line-height: 1.3;">
+            $urgencyEmoji $name
+          </h3>
+          <div style="margin: 8px 0;">
+            <p style="margin: 0; color: #616161; font-size: 14px; line-height: 1.6;">
+              <strong style="color: #424242;">Expires in:</strong> <span style="color: $textColor; font-weight: 600;">$days ${days == 1 ? 'day' : 'days'}</span>
+            </p>
+          </div>
+          <div style="margin: 8px 0;">
+            <p style="margin: 0; color: #616161; font-size: 14px; line-height: 1.6;">
+              <strong style="color: #424242;">Expiry Date:</strong> $expiryDate
+            </p>
+          </div>
+          ${folder.isNotEmpty ? '''
+          <div style="margin: 8px 0;">
+            <p style="margin: 0; color: #9E9E9E; font-size: 12px; line-height: 1.6;">
+              📁 $folder
+            </p>
+          </div>
+          ''' : ''}
+        </div>
+      ''';
+    }).join('\n');
+
+    final timestamp = DateTime.now().toString().substring(0, 19);
+
+    return '''
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warranty Reminder - Pocket Organizer</title>
+  </head>
+  <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+      
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%); padding: 40px 30px; text-align: center;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">
+          ⚠️ Warranty Expiry Alert
+        </h1>
+        <p style="margin: 12px 0 0 0; color: #E3F2FD; font-size: 15px; font-weight: 400;">
+          Pocket Organizer - Document Reminders
+        </p>
+      </div>
+      
+      <!-- Content -->
+      <div style="padding: 40px 30px;">
+        <p style="color: #212121; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+          Hello,
+        </p>
+        <p style="color: #424242; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+          You have <strong style="color: #1976D2; font-weight: 600;">${documents.length} document${documents.length > 1 ? 's' : ''}</strong> expiring soon. Please review and take necessary action:
+        </p>
+        
+        $documentListHtml
+        
+        <!-- Info Box -->
+        <div style="background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%); padding: 20px; border-radius: 8px; margin: 30px 0 0 0; border-left: 4px solid #1976D2;">
+          <p style="margin: 0; color: #0D47A1; font-size: 14px; line-height: 1.6;">
+            💡 <strong style="font-weight: 600;">Quick Tip:</strong> Open the Pocket Organizer app to view full document details, upload renewed warranties, or update expiry dates.
+          </p>
+        </div>
+      </div>
+      
+      <!-- Footer -->
+      <div style="background-color: #FAFAFA; padding: 30px; text-align: center; border-top: 1px solid #E0E0E0;">
+        <p style="margin: 0 0 8px 0; color: #757575; font-size: 13px; line-height: 1.6;">
+          This is an automated reminder from <strong style="color: #424242;">Pocket Organizer</strong>
+        </p>
+        <p style="margin: 0 0 8px 0; color: #9E9E9E; font-size: 12px;">
+          You can manage warranty reminder settings in the app
+        </p>
+        <p style="margin: 0; color: #BDBDBD; font-size: 11px;">
+          Sent: $timestamp
+        </p>
+      </div>
+      
+    </div>
+  </body>
+</html>
+''';
   }
 }

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'mongodb_service.dart';
+import 'native_network_service.dart';
 
 /// Firebase Cloud Messaging (FCM) Service
 /// Handles push notifications like WhatsApp - works on ALL Android devices
@@ -232,6 +233,13 @@ class FCMService {
     print('   Body: ${message.notification?.body}');
     print('   Data: ${message.data}');
 
+    // Check if this is a warranty email trigger (silent data message)
+    if (message.data['type'] == 'warranty_email_trigger') {
+      print('📧 [FCM] Warranty email trigger detected (foreground)');
+      await _handleWarrantyEmailTrigger(message.data);
+      return; // Don't show notification for silent data messages
+    }
+
     // Show local notification even when app is in foreground
     if (message.notification != null) {
       await _showLocalNotification(
@@ -242,6 +250,20 @@ class FCMService {
             ? 'budget_alerts'
             : 'sync_notifications',
       );
+    }
+  }
+
+  /// Handle warranty email trigger from FCM data message
+  static Future<void> _handleWarrantyEmailTrigger(
+      Map<String, dynamic> data) async {
+    try {
+      print('📧 [FCM] Processing warranty email trigger...');
+      print('   Data: $data');
+
+      // Call native_network_service to handle email sending
+      await NativeNetworkService.handleWarrantyEmailTrigger(data);
+    } catch (e) {
+      print('❌ [FCM] Error handling warranty email trigger: $e');
     }
   }
 
@@ -343,6 +365,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   print('   Title: ${message.notification?.title}');
   print('   Body: ${message.notification?.body}');
   print('   Data: ${message.data}');
+
+  // Check if this is a warranty email trigger (silent data message)
+  if (message.data['type'] == 'warranty_email_trigger') {
+    print('📧 [FCM] Warranty email trigger detected (background)');
+    try {
+      // Call native_network_service to handle email sending
+      await NativeNetworkService.handleWarrantyEmailTrigger(message.data);
+    } catch (e) {
+      print('❌ [FCM] Error handling warranty email trigger in background: $e');
+    }
+    return; // Don't show notification for silent data messages
+  }
 
   // Background messages are automatically displayed by FCM
   // No need to show local notification here
