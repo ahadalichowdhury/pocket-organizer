@@ -246,10 +246,29 @@ async function sendFCMNotification({ fcmToken, title, body, data }) {
 }
 
 async function getFCMAccessToken() {
-  // This should use a service account to get an OAuth 2.0 token
-  // For simplicity, you can store the token as a MongoDB Atlas Value/Secret
-  const token = await context.values.get("fcm_access_token");
-  return token;
+  try {
+    // Try the recommended way first (Atlas App Services Values/Secrets)
+    const token = context.values.get("fcm_access_token");
+    
+    if (token) {
+      console.log("   ✅ Got access token from Atlas Values");
+      return token;
+    }
+    
+    // Fallback: Try environment variables (if configured)
+    if (context.environment && context.environment.values) {
+      const envToken = context.environment.values.fcm_access_token;
+      if (envToken) {
+        console.log("   ✅ Got access token from environment");
+        return envToken;
+      }
+    }
+    
+    throw new Error("FCM access token not found in Atlas Values or Environment");
+  } catch (error) {
+    console.error("   ❌ Error getting FCM access token:", error.message);
+    throw error;
+  }
 }
 
 function capitalize(str) {

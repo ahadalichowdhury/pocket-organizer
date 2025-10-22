@@ -15,7 +15,6 @@ import '../../core/constants/app_constants.dart';
 import '../../data/models/expense_model.dart';
 // import '../../data/models/notification_model.dart'; // Not needed - using server-side notifications
 import '../../data/services/hive_service.dart';
-import '../../data/services/smart_sync_service.dart';
 import '../../data/services/user_settings_sync_service.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/expense_summary_card.dart';
@@ -1935,31 +1934,90 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                     await HiveService.saveSetting(
                         'alert_threshold', alertThreshold);
 
-                    // Sync to MongoDB (non-blocking, ignore errors)
+                    // Sync to MongoDB IMMEDIATELY (WAIT for success to ensure triggers work)
                     final user = FirebaseAuth.instance.currentUser;
                     if (user != null) {
-                      // Run MongoDB sync in background without blocking UI
-                      UserSettingsSyncService.updateSetting(
-                        userId: user.uid,
-                        currencySymbol: selectedCurrency,
-                        dailyBudget: dailyLimit == 0.0 ? null : dailyLimit,
-                        weeklyBudget: weeklyLimit == 0.0 ? null : weeklyLimit,
-                        monthlyBudget:
-                            monthlyLimit == 0.0 ? null : monthlyLimit,
-                        alertThreshold: alertThreshold,
-                      ).catchError((error) {
-                        // Ignore MongoDB errors - SmartSync will retry later
+                      print(
+                          '📤 [BudgetSettings] Syncing budget settings to MongoDB...');
+                      try {
+                        // AWAIT MongoDB sync to ensure trigger gets updated values
+                        await UserSettingsSyncService.updateSetting(
+                          userId: user.uid,
+                          currencySymbol: selectedCurrency,
+                          dailyBudget: dailyLimit == 0.0 ? null : dailyLimit,
+                          weeklyBudget: weeklyLimit == 0.0 ? null : weeklyLimit,
+                          monthlyBudget:
+                              monthlyLimit == 0.0 ? null : monthlyLimit,
+                          alertThreshold: alertThreshold,
+                        );
                         print(
-                            '⚠️ [BudgetSettings] MongoDB sync failed (will retry): $error');
-                      });
-
-                      // 🔄 Trigger smart sync (background, non-blocking)
-                      SmartSyncService.syncSettings();
+                            '✅ [BudgetSettings] Budget settings synced to MongoDB successfully!');
+                        print(
+                            '   MongoDB trigger will now use these updated values');
+                      } catch (error) {
+                        print(
+                            '❌ [BudgetSettings] Failed to sync to MongoDB: $error');
+                        print(
+                            '   WARNING: MongoDB trigger may use old budget values!');
+                        // Show warning to user
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: const Text(
+                                  '⚠️ Settings saved locally but cloud sync failed. Budget alerts may not work correctly.'),
+                              backgroundColor: Colors.orange,
+                              duration: const Duration(seconds: 5),
+                              action: SnackBarAction(
+                                label: 'Retry',
+                                textColor: Colors.white,
+                                onPressed: () async {
+                                  try {
+                                    await UserSettingsSyncService.updateSetting(
+                                      userId: user.uid,
+                                      currencySymbol: selectedCurrency,
+                                      dailyBudget:
+                                          dailyLimit == 0.0 ? null : dailyLimit,
+                                      weeklyBudget: weeklyLimit == 0.0
+                                          ? null
+                                          : weeklyLimit,
+                                      monthlyBudget: monthlyLimit == 0.0
+                                          ? null
+                                          : monthlyLimit,
+                                      alertThreshold: alertThreshold,
+                                    );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                              '✅ Budget settings synced successfully!'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('❌ Sync failed again: $e'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+                        }
+                      }
                     }
 
                     setState(() {}); // Refresh UI
 
-                    // Close dialog IMMEDIATELY (don't wait for MongoDB)
+                    // Close dialog and show success
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(

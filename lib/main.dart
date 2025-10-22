@@ -89,11 +89,8 @@ class _MyAppState extends ConsumerState<MyApp> {
       if (MongoDBService.isConnected) {
         print('✅ MongoDB connected - cloud sync enabled');
 
-        // Sync user profile to MongoDB (creates user document if not exists)
-        await UserSyncService.syncUserToMongoDB();
-
-        // Sync FCM token to MongoDB after connection is established
-        await FCMService.syncTokenToMongoDB();
+        // Note: User creation/update is now handled in login/signup/main _initializeUserData
+        // This ensures user document and FCM token are synced after authentication
 
         // Initialize Smart Sync Service (handles offline queue & auto-sync)
         setState(() => _initStatus = 'Setting up smart sync...');
@@ -233,6 +230,32 @@ class _MyAppState extends ConsumerState<MyApp> {
         ref
             .read(themeModeProvider.notifier)
             .setDarkMode(userSettings.isDarkMode);
+
+        // 🔧 FIX: Create/update user in MongoDB and sync FCM token
+        print('🔐 [Main] Creating/updating user in MongoDB...');
+        try {
+          final authService = ref.read(authServiceProvider);
+          final user = authService.currentUser;
+
+          if (user != null) {
+            // Create or update user document
+            await UserSyncService.createOrUpdateUser(
+              userId: user.uid,
+              email: user.email ?? '',
+              displayName: user.displayName,
+              photoUrl: user.photoURL,
+            );
+            print('✅ [Main] User created/updated in MongoDB');
+
+            // Sync FCM token to MongoDB
+            print('🔐 [Main] Syncing FCM token to MongoDB...');
+            await FCMService.syncTokenToMongoDB();
+            print('✅ [Main] FCM token synced to MongoDB');
+          }
+        } catch (e) {
+          print('⚠️ [Main] Failed to sync user/FCM to MongoDB: $e');
+          // Don't block app initialization if this fails
+        }
 
         // Schedule auto-sync if enabled
         final autoSyncInterval =

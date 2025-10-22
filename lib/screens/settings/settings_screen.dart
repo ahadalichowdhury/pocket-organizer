@@ -9,6 +9,7 @@ import 'package:local_auth/local_auth.dart';
 
 import '../../data/services/automated_report_service.dart';
 import '../../data/services/connectivity_monitor_service.dart';
+import '../../data/services/data_clear_service.dart';
 import '../../data/services/document_sync_service.dart';
 import '../../data/services/expense_sync_service.dart';
 import '../../data/services/folder_sync_service.dart';
@@ -17,6 +18,7 @@ import '../../data/services/native_network_service.dart';
 import '../../data/services/smart_sync_service.dart';
 import '../../data/services/user_settings_sync_service.dart';
 import '../../providers/app_providers.dart';
+import '../logs/logs_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -129,8 +131,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
 
       if (mounted) {
-        // Reload settings to refresh the cached sync time
-        await _loadSettings();
+        // Update only the last sync time display (don't reload all settings)
+        setState(() {
+          _lastSyncTime = _getRelativeTime(syncTime);
+        });
       }
     } catch (e) {
       print('❌ [Sync] Error: $e');
@@ -288,6 +292,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await secureStorage.delete(key: 'saved_email');
                 await secureStorage.delete(key: 'saved_password');
 
+                // 🔧 FIX: Reset the prompt flag so user can be prompted again on next login
+                await HiveService.saveSetting('biometric_prompt_shown', false);
+                print(
+                    '🔒 [Settings] Reset biometric_prompt_shown to allow re-prompting on next login');
+
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -336,6 +345,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           // Data & Storage Section
           _buildSectionHeader('Data & Storage'),
+          ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: const Text('View App Logs'),
+            subtitle: const Text('Debug information and activity'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LogsScreen(),
+                ),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.storage_outlined),
             title: const Text('Storage Usage'),
@@ -418,7 +441,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.delete_forever, color: Colors.red),
             title: const Text('Clear All Data',
                 style: TextStyle(color: Colors.red)),
-            subtitle: const Text('Delete all local documents and expenses'),
+            subtitle:
+                const Text('Delete all data from local and cloud storage'),
             onTap: () {
               _showClearDataConfirmation(context);
             },
@@ -688,43 +712,400 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _showClearDataConfirmation(BuildContext context) {
-    showDialog(
+  void _showClearDataConfirmation(BuildContext context) async {
+    // Get data counts
+    final counts = DataClearService.getDataCounts();
+    final totalItems =
+        counts['folders']! + counts['documents']! + counts['expenses']!;
+
+    // Step 1: Show warning dialog
+    final confirmed = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Clear All Data?'),
-          content: const Text(
-            'This will permanently delete all your documents, folders, and expenses. This action cannot be undone.',
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.red),
+              const SizedBox(width: 12),
+              const Text('Clear All Data?'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.error_outline,
+                              color: Colors.red, size: 20),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'DANGER: This action cannot be undone!',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'This will permanently delete ALL your data from:',
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.phone_android, size: 16),
+                          const SizedBox(width: 8),
+                          const Text('Local device storage'),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.cloud, size: 16),
+                          const SizedBox(width: 8),
+                          const Text('Cloud database (MongoDB)'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Items to be deleted:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                _buildCountRow('Folders', counts['folders']!),
+                _buildCountRow('Documents', counts['documents']!),
+                _buildCountRow('Expenses', counts['expenses']!),
+                const Divider(),
+                _buildCountRow('Total', totalItems, isBold: true),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'You will need to authenticate with your password or fingerprint to proceed.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                await HiveService.clearAllData();
-                await ref.read(foldersProvider.notifier).loadFolders();
-                await ref.read(documentsProvider.notifier).loadDocuments();
-                await ref.read(expensesProvider.notifier).loadExpenses();
-
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('All data cleared')),
-                  );
-                }
-              },
+              onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
               ),
-              child: const Text('Clear All'),
+              child: const Text('Continue'),
             ),
           ],
         );
       },
     );
+
+    if (confirmed != true || !context.mounted) return;
+
+    // Step 2: Authenticate user
+    final authenticated = await _authenticateUser();
+    if (!authenticated || !context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Authentication failed - data not deleted'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Step 3: Show progress dialog
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Deleting all data...'),
+              SizedBox(height: 8),
+              Text(
+                'This may take a moment',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    // Step 4: Clear all data
+    final result = await DataClearService.clearAllData();
+
+    // Close progress dialog
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+
+    // Step 5: Show result and reload providers
+    if (context.mounted) {
+      if (result['success']) {
+        // Reload all providers
+        await ref.read(foldersProvider.notifier).loadFolders();
+        await ref.read(documentsProvider.notifier).loadDocuments();
+        await ref.read(expensesProvider.notifier).loadExpenses();
+
+        final localDeleted = result['localItemsDeleted'] ?? 0;
+        final cloudDeleted = result['cloudItemsDeleted'] ?? 0;
+        final totalDeleted =
+            result['totalItemsDeleted'] ?? (localDeleted + cloudDeleted);
+        final isPartialSuccess = result['partialSuccess'] == true;
+        final warning = result['warning'];
+
+        if (isPartialSuccess && warning != null) {
+          // Show partial success warning
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      SizedBox(width: 12),
+                      Text('Partial Success'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '📱 Local: $localDeleted items deleted\n☁️ Cloud: Failed to delete\n\n⚠️ $warning',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 8),
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
+            ),
+          );
+        } else {
+          // Show full success
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white),
+                      SizedBox(width: 12),
+                      Text('All data deleted successfully!'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '📱 Local: $localDeleted items\n☁️ Cloud: $cloudDeleted items\n✅ Total: $totalDeleted items',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: ${result['error'] ?? 'Unknown error'}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildCountRow(String label, int count, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          Text(
+            '$count',
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: count > 0 ? Colors.red : Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _authenticateUser() async {
+    try {
+      // Check if biometric is enabled and available
+      final biometricEnabled =
+          HiveService.getSetting('biometric_enabled', defaultValue: false)
+              as bool;
+
+      if (biometricEnabled) {
+        // Try biometric authentication first
+        try {
+          final authenticated = await _localAuth.authenticate(
+            localizedReason: 'Authenticate to delete all data',
+            options: const AuthenticationOptions(
+              stickyAuth: true,
+              biometricOnly: false, // Allow PIN/pattern as fallback
+              useErrorDialogs: true,
+              sensitiveTransaction: true,
+            ),
+          );
+
+          if (authenticated) {
+            print('✅ [ClearData] Authenticated via biometric');
+            return true;
+          }
+        } catch (e) {
+          print('⚠️ [ClearData] Biometric auth failed: $e');
+          // Fall through to password authentication
+        }
+      }
+
+      // Fallback to password authentication
+      if (!mounted) return false;
+
+      final password = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          final passwordController = TextEditingController();
+          return AlertDialog(
+            title: const Text('Enter Password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Please enter your account password to confirm deletion:',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: passwordController,
+                  obscureText: true,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: Icon(Icons.lock),
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (value) {
+                    Navigator.pop(context, value);
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context, passwordController.text);
+                },
+                child: const Text('Confirm'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (password == null || password.isEmpty) {
+        print('⚠️ [ClearData] Password authentication cancelled');
+        return false;
+      }
+
+      // Verify password with Firebase
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || user.email == null) {
+        print('❌ [ClearData] No user logged in');
+        return false;
+      }
+
+      try {
+        final credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: password,
+        );
+        await user.reauthenticateWithCredential(credential);
+        print('✅ [ClearData] Authenticated via password');
+        return true;
+      } catch (e) {
+        print('❌ [ClearData] Password authentication failed: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Incorrect password'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return false;
+      }
+    } catch (e) {
+      print('❌ [ClearData] Authentication error: $e');
+      return false;
+    }
   }
 
   void _showLogoutConfirmation(BuildContext context) {
@@ -933,8 +1314,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Daily Reports'),
-                      subtitle:
-                          const Text('Sent every day at 9:00 AM'),
+                      subtitle: const Text('Sent every day at 9:00 AM'),
                       value: dailyEnabled,
                       onChanged: (value) async {
                         setState(() => dailyEnabled = value);
@@ -1200,52 +1580,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // WhatsApp-style description
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.green.shade50,
-                              Colors.green.shade100
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.info_outline,
-                                    color: Colors.green.shade700, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'WhatsApp-Style Backup',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Your data is backed up automatically to the cloud. Login on any device to restore all your data.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.green.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 24),
-
                       // Backup status
                       FutureBuilder<int>(
                         future: Future.value(
@@ -1416,90 +1750,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             elevation: 2,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // Test Backup Button (for debugging)
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                          onPressed: isLoading
-                              ? null
-                              : () async {
-                                  setState(() => isLoading = true);
-
-                                  try {
-                                    print('🧪 [UI] Test backup button pressed');
-                                    await AutomatedReportService
-                                        .triggerManualTestSync();
-
-                                    setState(() => isLoading = false);
-
-                                    if (context.mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                          content: Row(
-                                            children: [
-                                              Icon(Icons.science,
-                                                  color: Colors.white),
-                                              SizedBox(width: 12),
-                                              Text(
-                                                  'Test backup completed! Check logs.'),
-                                            ],
-                                          ),
-                                          backgroundColor: Colors.blue,
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    setState(() => isLoading = false);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Row(
-                                            children: [
-                                              const Icon(Icons.error,
-                                                  color: Colors.white),
-                                              const SizedBox(width: 12),
-                                              Text(
-                                                  'Test backup failed: ${e.toString()}'),
-                                            ],
-                                          ),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                          icon: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.science, size: 24),
-                          label: Text(
-                            isLoading ? 'Testing...' : 'Test Backup (Debug)',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side:
-                                const BorderSide(color: Colors.blue, width: 2),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
                           ),
                         ),
                       ),

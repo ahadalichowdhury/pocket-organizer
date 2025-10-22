@@ -7,11 +7,14 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.os.Build
 import android.util.Log
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity: FlutterActivity() {
+// 🔧 FIX: Changed from FlutterActivity to FlutterFragmentActivity
+// This is required by the local_auth plugin for biometric authentication
+// See: https://pub.dev/packages/local_auth#android-integration
+class MainActivity: FlutterFragmentActivity() {
     private val CHANNEL = "com.example.pocket_organizer/network"
     private val SERVICE_CHANNEL = "com.example.pocket_organizer/service"
     private val ALARM_CHANNEL = "com.example.pocket_organizer/alarm"

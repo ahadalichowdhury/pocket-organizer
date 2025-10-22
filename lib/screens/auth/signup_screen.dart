@@ -64,6 +64,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       // Initialize default folders for new user
       await ref.read(foldersProvider.notifier).initializeDefaultFolders();
 
+      // NOTE: User creation in MongoDB is handled on FIRST LOGIN
+      // This prevents duplicate user documents and race conditions
+      print(
+          '📝 [Signup] Account created, user will be synced to MongoDB on first login');
+
       // Show success message
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

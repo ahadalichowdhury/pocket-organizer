@@ -23,9 +23,11 @@ class FCMService {
     }
 
     try {
-      // Request permission for iOS
+      // Request notification permission (iOS AND Android 13+)
+      NotificationSettings settings;
+
       if (Platform.isIOS) {
-        final settings = await _firebaseMessaging.requestPermission(
+        settings = await _firebaseMessaging.requestPermission(
           alert: true,
           badge: true,
           sound: true,
@@ -36,6 +38,36 @@ class FCMService {
         );
         print(
             '📱 [FCM] iOS permission status: ${settings.authorizationStatus}');
+      } else if (Platform.isAndroid) {
+        // For Android 13+ (API 33+), request notification permission
+        settings = await _firebaseMessaging.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        print(
+            '📱 [FCM] Android permission status: ${settings.authorizationStatus}');
+
+        // Additionally, request POST_NOTIFICATIONS permission using flutter_local_notifications
+        final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+            _flutterLocalNotificationsPlugin
+                .resolvePlatformSpecificImplementation<
+                    AndroidFlutterLocalNotificationsPlugin>();
+
+        if (androidImplementation != null) {
+          final bool? granted =
+              await androidImplementation.requestNotificationsPermission();
+          print(
+              '📱 [FCM] Android POST_NOTIFICATIONS permission granted: $granted');
+
+          if (granted == false) {
+            print('⚠️ [FCM] User denied notification permission!');
+            print('   Notifications will not be shown');
+          }
+        }
+      } else {
+        // Desktop or other platforms
+        settings = await _firebaseMessaging.requestPermission();
       }
 
       // Initialize local notifications

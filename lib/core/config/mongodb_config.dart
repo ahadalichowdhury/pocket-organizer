@@ -30,6 +30,7 @@ class MongoDBConfig {
   static const String foldersCollection = 'folders';
   static const String usersCollection = 'users';
   static const String userSettingsCollection = 'user_settings';
+  static const String budgetAlertsCollection = 'budget_alerts';
 
   // Connection timeout
   static const Duration connectionTimeout = Duration(seconds: 10);

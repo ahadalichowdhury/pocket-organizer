@@ -5,8 +5,10 @@ import 'package:local_auth/local_auth.dart';
 
 import '../../data/services/document_sync_service.dart';
 import '../../data/services/expense_sync_service.dart';
+import '../../data/services/fcm_service.dart';
 import '../../data/services/folder_sync_service.dart';
 import '../../data/services/hive_service.dart';
+import '../../data/services/user_sync_service.dart';
 import '../../providers/app_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -210,6 +212,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ref.read(expensesProvider.notifier).loadExpenses();
 
       print('🔐 [Login] ✅ User data loaded from local storage');
+
+      // 🔧 FIX: Create/update user in MongoDB and sync FCM token
+      print('🔐 [Login] Creating/updating user in MongoDB...');
+      try {
+        final user = authService.currentUser;
+        if (user != null) {
+          // Create or update user document
+          await UserSyncService.createOrUpdateUser(
+            userId: user.uid,
+            email: user.email ?? '',
+            displayName: user.displayName,
+            photoUrl: user.photoURL,
+          );
+          print('✅ [Login] User created/updated in MongoDB');
+
+          // Sync FCM token to MongoDB
+          print('🔐 [Login] Syncing FCM token to MongoDB...');
+          await FCMService.syncTokenToMongoDB();
+          print('✅ [Login] FCM token synced to MongoDB');
+        }
+      } catch (e) {
+        print('⚠️ [Login] Failed to sync user/FCM to MongoDB: $e');
+        // Don't block login if this fails
+      }
 
       // Check if user has already been prompted for biometric setup
       final hasBeenPrompted =

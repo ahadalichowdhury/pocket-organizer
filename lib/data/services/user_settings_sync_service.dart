@@ -113,6 +113,8 @@ class UserSettingsSyncService {
   /// Convert hours to interval string
   static String _hoursToIntervalString(int hours) {
     switch (hours) {
+      case 2:
+        return '2h';
       case 6:
         return '6h';
       case 8:
@@ -199,6 +201,8 @@ class UserSettingsSyncService {
   /// Convert interval string to hours
   static int _intervalStringToHours(String interval) {
     switch (interval) {
+      case '2h':
+        return 2;
       case '6h':
         return 6;
       case '8h':

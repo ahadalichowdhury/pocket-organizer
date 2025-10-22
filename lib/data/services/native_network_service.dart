@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 
+import 'app_logger.dart';
 import 'automated_report_service.dart';
 import 'document_sync_service.dart';
 import 'expense_sync_service.dart';
@@ -184,11 +185,13 @@ class NativeNetworkService {
     print('📡 [NativeNetwork] ==========================================');
     print('📡 [NativeNetwork] WiFi CONNECTED - Native callback received!');
     print('📡 [NativeNetwork] ==========================================');
+    AppLogger.info('WiFi connected - checking for backup...');
 
     try {
       // Check if user boxes are open (prevent race condition during app startup)
       if (HiveService.currentUserId == null) {
         print('⚠️ [NativeNetwork] User not logged in yet, skipping backup');
+        AppLogger.warning('User not logged in, skipping backup');
         return;
       }
 
@@ -199,10 +202,12 @@ class NativeNetworkService {
 
       if (!autoSyncEnabled) {
         print('ℹ️ [NativeNetwork] Auto-sync is disabled, skipping');
+        AppLogger.info('Auto-sync is disabled, skipping backup');
         return;
       }
 
       print('✅ [NativeNetwork] Auto-sync is enabled, starting backup...');
+      AppLogger.success('Auto-sync enabled - starting backup...');
 
       // 1. Process pending email reports
       print('📧 [NativeNetwork] Processing pending email reports...');
@@ -210,6 +215,7 @@ class NativeNetworkService {
         await AutomatedReportService.processPendingReports();
       } catch (e) {
         print('❌ [NativeNetwork] Failed to process pending reports: $e');
+        AppLogger.error('Failed to process pending reports: $e');
       }
 
       // 2. Perform auto-sync
@@ -217,14 +223,18 @@ class NativeNetworkService {
       await _performSync();
 
       print('✅ [NativeNetwork] WiFi-triggered sync complete!');
+      AppLogger.success('WiFi backup completed successfully!');
     } catch (e) {
       print('❌ [NativeNetwork] Error during WiFi sync: $e');
+      AppLogger.error('WiFi sync failed: $e');
     }
   }
 
   /// Perform sync (same logic as manual backup)
   static Future<void> _performSync() async {
     try {
+      AppLogger.info('Starting data sync...');
+
       // Show backup started notification (like WhatsApp)
       await _progressChannel.invokeMethod('showBackupStarted');
       print('📱 [NativeNetwork] Progress notification shown');
@@ -233,8 +243,10 @@ class NativeNetworkService {
 
       // 1. Sync folders
       print('☁️ [NativeNetwork] Syncing folders...');
+      AppLogger.info('Syncing folders...');
       final folderCount = await FolderSyncService.syncAllFoldersToMongoDB();
       totalItemsSynced += folderCount;
+      AppLogger.success('Synced $folderCount folders');
 
       // Update progress: Folders complete
       await _progressChannel.invokeMethod('updateProgress', {
@@ -245,9 +257,11 @@ class NativeNetworkService {
 
       // 2. Sync documents
       print('☁️ [NativeNetwork] Syncing documents...');
+      AppLogger.info('Syncing documents...');
       final documentCount =
           await DocumentSyncService.syncAllDocumentsToMongoDB();
       totalItemsSynced += documentCount;
+      AppLogger.success('Synced $documentCount documents');
 
       // Update progress: Documents complete
       await _progressChannel.invokeMethod('updateProgress', {
@@ -258,6 +272,7 @@ class NativeNetworkService {
 
       // 3. Sync expenses
       print('☁️ [NativeNetwork] Syncing expenses...');
+      AppLogger.info('Syncing expenses...');
       await ExpenseSyncService().syncAllExpensesToMongoDB();
 
       // Get expense count from Hive (open if needed)
@@ -270,8 +285,10 @@ class NativeNetworkService {
         final expenseBox = Hive.box('expenses');
         expenseCount = expenseBox.length;
         print('✅ [NativeNetwork] Got expense count: $expenseCount');
+        AppLogger.success('Synced $expenseCount expenses');
       } catch (e) {
         print('⚠️ [NativeNetwork] Could not get expense count: $e');
+        AppLogger.warning('Could not get expense count: $e');
         expenseCount = 0;
       }
       totalItemsSynced += expenseCount;
@@ -289,6 +306,7 @@ class NativeNetworkService {
           'last_sync_time', syncTime.millisecondsSinceEpoch);
 
       print('✅ [NativeNetwork] Sync complete!');
+      AppLogger.success('Backup complete: $totalItemsSynced items synced');
 
       // Show completion notification (like WhatsApp)
       await _progressChannel.invokeMethod('showBackupComplete', {
@@ -298,6 +316,7 @@ class NativeNetworkService {
           '✅ [NativeNetwork] Progress notification completed: $totalItemsSynced items');
     } catch (e) {
       print('❌ [NativeNetwork] Sync failed: $e');
+      AppLogger.error('Sync failed: $e');
 
       // Show error notification
       await _progressChannel.invokeMethod('showBackupError', {
@@ -313,14 +332,17 @@ class NativeNetworkService {
     print('📧 [NativeNetwork] ==========================================');
     print('📧 [NativeNetwork] DAILY EMAIL REPORT - Alarm triggered!');
     print('📧 [NativeNetwork] ==========================================');
+    AppLogger.info('Daily email report alarm triggered');
 
     try {
       // Generate and send the daily report
       await generateAndSendReport('daily');
 
       print('✅ [NativeNetwork] Daily email report sent successfully!');
+      AppLogger.success('Daily email report sent successfully');
     } catch (e) {
       print('❌ [NativeNetwork] Error during daily email report: $e');
+      AppLogger.error('Daily email report failed: $e');
     }
   }
 }
