@@ -128,65 +128,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(height: 24),
 
               // Expense Summary
-              if (todayExpenses.isNotEmpty) ...[
-                _buildSectionHeader(context, 'Today\'s Expenses', () {
-                  Navigator.pushNamed(context, '/expenses');
-                }),
-                const SizedBox(height: 12),
-                // Show only 2 latest expenses (non-clickable)
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: todayExpenses.take(2).length,
-                  itemBuilder: (context, index) {
-                    final expense = todayExpenses[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color:
-                                Theme.of(context).primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              expense.category.isNotEmpty
-                                  ? expense.category[0]
-                                  : '💰',
-                              style: const TextStyle(fontSize: 20),
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          expense.storeName ?? expense.category,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Text(
-                          '${expense.category} • ${expense.paymentMethod}',
-                          style: TextStyle(
-                              color: Colors.grey.shade600, fontSize: 12),
-                        ),
-                        trailing: Text(
-                          '${_getCurrencySymbol()}${expense.amount.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Theme.of(context).primaryColor,
-                          ),
-                        ),
-                        // No onTap - items are non-clickable
-                        enabled: false,
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-              ],
-
-              // Expiring Documents Alert
               if (expiringDocuments.isNotEmpty) ...[
                 _buildSectionHeader(context, 'Expiring Soon', () {
                   Navigator.push(
@@ -301,6 +242,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 24),
               ],
+              if (todayExpenses.isNotEmpty) ...[
+                _buildSectionHeader(context, 'Today\'s Expenses', () {
+                  Navigator.pushNamed(context, '/expenses');
+                }),
+                const SizedBox(height: 12),
+                // Show only 2 latest expenses (non-clickable)
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: todayExpenses.take(2).length,
+                  itemBuilder: (context, index) {
+                    final expense = todayExpenses[index];
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color:
+                                Theme.of(context).primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Text(
+                              expense.category.isNotEmpty
+                                  ? expense.category[0]
+                                  : '💰',
+                              style: const TextStyle(fontSize: 20),
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          expense.storeName ?? expense.category,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text(
+                          '${expense.category} • ${expense.paymentMethod}',
+                          style: TextStyle(
+                              color: Colors.grey.shade600, fontSize: 12),
+                        ),
+                        trailing: Text(
+                          '${_getCurrencySymbol()}${expense.amount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        ),
+                        // No onTap - items are non-clickable
+                        enabled: false,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+              ],
+
 
               // Recent Documents
               _buildSectionHeader(context, 'Recent Documents', () {
