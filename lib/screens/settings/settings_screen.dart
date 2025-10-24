@@ -31,7 +31,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final LocalAuthentication _localAuth = LocalAuthentication();
   bool _biometricEnabled = false;
   bool _notificationsEnabled = true;
-  String? _lastSyncTime;
   String _autoSyncInterval = 'manual'; // manual, 6h, 8h, 12h, 24h
   bool _syncOnWifiOnly = true; // Default: WiFi only
 
@@ -54,10 +53,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         HiveService.getSetting('biometric_enabled', defaultValue: false);
     final notifications =
         HiveService.getSetting('notifications_enabled', defaultValue: true);
-    // Load SCHEDULED backup time (not manual sync time)
-    final lastScheduledBackup =
-        HiveService.getSetting('last_scheduled_backup_time', defaultValue: 0)
-            as int;
     final autoSync =
         HiveService.getSetting('auto_sync_interval', defaultValue: 'manual')
             as String;
@@ -75,10 +70,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _syncOnWifiOnly = wifiOnly;
       _warrantyRemindersEnabled = warrantyEnabled;
       _warrantyReminderDays = warrantyDays.cast<int>();
-      if (lastScheduledBackup > 0) {
-        _lastSyncTime = _getRelativeTime(
-            DateTime.fromMillisecondsSinceEpoch(lastScheduledBackup));
-      }
     });
   }
 
