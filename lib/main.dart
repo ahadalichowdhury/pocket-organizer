@@ -124,15 +124,8 @@ class _MyAppState extends ConsumerState<MyApp> {
       await NativeNetworkService.initialize();
       print('✅ Native network monitoring initialized');
 
-      // Auto-start foreground service (like WhatsApp)
-      setState(() => _initStatus = 'Starting background monitoring...');
-      try {
-        await NativeNetworkService.startForegroundService();
-        print('✅ Background monitoring service started automatically');
-      } catch (e) {
-        print('⚠️ Could not start background service: $e');
-        print('   App will still work, but WiFi monitoring may be limited');
-      }
+      // Note: Foreground service removed - AlarmManager handles scheduled backups
+      // No persistent "monitoring" notification needed anymore!
 
       setState(() {
         _initStatus = 'Ready!';

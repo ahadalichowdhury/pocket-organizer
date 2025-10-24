@@ -116,6 +116,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  String _getIntervalLabel(String interval) {
+    switch (interval) {
+      case '2h':
+        return '2 hours';
+      case '6h':
+        return '6 hours';
+      case '8h':
+        return '8 hours';
+      case '12h':
+        return '12 hours';
+      case '24h':
+        return '24 hours';
+      default:
+        return 'Not scheduled';
+    }
+  }
+
   Future<void> _performSync() async {
     try {
       print('🔄 [Sync] Starting full sync...');
@@ -150,7 +167,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       // Note: DO NOT update _lastSyncTime here!
       // It should only show scheduled backup time, not manual sync
-      print('ℹ️ [Sync] Manual sync complete (does not affect auto-backup time)');
+      print(
+          'ℹ️ [Sync] Manual sync complete (does not affect auto-backup time)');
     } catch (e) {
       print('❌ [Sync] Error: $e');
       rethrow; // Re-throw so caller can handle the error
@@ -388,9 +406,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.backup, color: Colors.green),
             title: const Text('Automatic Backup'),
-            subtitle: Text(_lastSyncTime != null
-                ? 'Last auto-backup: $_lastSyncTime'
-                : 'No auto-backup yet'),
+            subtitle: Text(_autoSyncInterval != 'manual'
+                ? 'Scheduled every ${_getIntervalLabel(_autoSyncInterval)}'
+                : 'Manual backup only'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               _showAutomaticBackupSettings(context);
