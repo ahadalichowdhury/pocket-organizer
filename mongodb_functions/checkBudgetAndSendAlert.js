@@ -128,6 +128,10 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     }
     
+    // Get user settings for currency symbol
+    const userSettings = await db.collection("user_settings").findOne({ userId });
+    const currencySymbol = userSettings?.currencySymbol || '$';
+    
     // Get expenses for the period
     const expenses = await db.collection("expenses")
       .find({
@@ -149,7 +153,8 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
       budget,
       totalSpent,
       threshold: thresholdAmount,
-      shouldAlert
+      shouldAlert,
+      currencySymbol
     });
     
     if (shouldAlert) {
@@ -161,16 +166,17 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
       });
       
       if (!lastAlert) {
-        // Send FCM notification
+        // Send FCM notification with user's currency symbol
         await sendFCMNotification({
           fcmToken,
           title: `${capitalize(period)} Budget Alert`,
-          body: `You've spent $${totalSpent.toFixed(2)} of $${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
+          body: `You've spent ${currencySymbol}${totalSpent.toFixed(2)} of ${currencySymbol}${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
           data: {
             type: 'budget_alert',
             period: period,
             spent: totalSpent.toString(),
-            budget: budget.toString()
+            budget: budget.toString(),
+            currencySymbol: currencySymbol
           }
         });
         
