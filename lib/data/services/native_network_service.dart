@@ -46,19 +46,58 @@ class NativeNetworkService {
     }
   }
 
+  /// Check if exact alarm permission is granted (Android 12+)
+  static Future<bool> canScheduleExactAlarms() async {
+    try {
+      final result =
+          await _alarmChannel.invokeMethod<bool>('canScheduleExactAlarms');
+      return result ??
+          true; // Return true for Android <12 (no permission needed)
+    } catch (e) {
+      print('⚠️ [NativeNetwork] Failed to check alarm permission: $e');
+      return true; // Assume permission granted on error
+    }
+  }
+
+  /// Request exact alarm permission (Android 12+)
+  /// Opens system settings for user to grant permission
+  static Future<void> requestExactAlarmPermission() async {
+    try {
+      print('🔐 [NativeNetwork] Requesting exact alarm permission...');
+      print('📱 [NativeNetwork] Opening system settings...');
+
+      await _alarmChannel.invokeMethod('requestExactAlarmPermission');
+
+      print('✅ [NativeNetwork] Settings opened - waiting for user action');
+    } catch (e) {
+      print('❌ [NativeNetwork] Failed to open alarm settings: $e');
+      rethrow;
+    }
+  }
+
   /// Schedule periodic backup using native AlarmManager (like WhatsApp)
-  static Future<void> schedulePeriodicBackup(int intervalMinutes) async {
+  static Future<void> schedulePeriodicBackup(
+    int intervalMinutes, {
+    bool wifiOnly = true,
+  }) async {
     try {
       print('⏰ [NativeNetwork] Scheduling periodic backup via AlarmManager...');
       print('⏰ [NativeNetwork] Interval: $intervalMinutes minutes');
+      print('⏰ [NativeNetwork] WiFi Only: $wifiOnly');
       print('⏰ [NativeNetwork] This uses native AlarmManager (like WhatsApp)');
 
       await _alarmChannel.invokeMethod('schedulePeriodicBackup', {
         'intervalMinutes': intervalMinutes,
+        'wifiOnly': wifiOnly,
       });
 
       print('✅ [NativeNetwork] Periodic backup scheduled successfully!');
       print('💡 [NativeNetwork] Will trigger even if app is killed');
+      if (wifiOnly) {
+        print('📶 [NativeNetwork] Will only backup on WiFi');
+      } else {
+        print('📶 [NativeNetwork] Will backup on WiFi or mobile data');
+      }
     } catch (e) {
       print('❌ [NativeNetwork] Failed to schedule periodic backup: $e');
       rethrow;
@@ -311,7 +350,12 @@ class NativeNetworkService {
       await HiveService.saveSetting(
           'last_sync_time', syncTime.millisecondsSinceEpoch);
 
+      // IMPORTANT: Save as SCHEDULED backup time (not manual sync)
+      await HiveService.saveSetting(
+          'last_scheduled_backup_time', syncTime.millisecondsSinceEpoch);
+
       print('✅ [NativeNetwork] Sync complete!');
+      print('⏰ [NativeNetwork] Scheduled backup time saved: $syncTime');
       AppLogger.success('Backup complete: $totalItemsSynced items synced');
 
       // Show completion notification (like WhatsApp)

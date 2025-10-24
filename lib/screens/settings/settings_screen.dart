@@ -33,6 +33,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _notificationsEnabled = true;
   String? _lastSyncTime;
   String _autoSyncInterval = 'manual'; // manual, 6h, 8h, 12h, 24h
+  bool _syncOnWifiOnly = true; // Default: WiFi only
 
   // Warranty Reminders
   bool _warrantyRemindersEnabled = false;
@@ -53,11 +54,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         HiveService.getSetting('biometric_enabled', defaultValue: false);
     final notifications =
         HiveService.getSetting('notifications_enabled', defaultValue: true);
-    final lastSync =
-        HiveService.getSetting('last_sync_time', defaultValue: 0) as int;
+    // Load SCHEDULED backup time (not manual sync time)
+    final lastScheduledBackup =
+        HiveService.getSetting('last_scheduled_backup_time', defaultValue: 0)
+            as int;
     final autoSync =
         HiveService.getSetting('auto_sync_interval', defaultValue: 'manual')
             as String;
+    final wifiOnly =
+        HiveService.getSetting('sync_on_wifi_only', defaultValue: true);
     final warrantyEnabled = HiveService.getSetting('warranty_reminders_enabled',
         defaultValue: false);
     final warrantyDays = HiveService.getSetting('warranty_reminder_days',
@@ -67,11 +72,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _biometricEnabled = biometric;
       _notificationsEnabled = notifications;
       _autoSyncInterval = autoSync;
+      _syncOnWifiOnly = wifiOnly;
       _warrantyRemindersEnabled = warrantyEnabled;
       _warrantyReminderDays = warrantyDays.cast<int>();
-      if (lastSync > 0) {
-        _lastSyncTime =
-            _getRelativeTime(DateTime.fromMillisecondsSinceEpoch(lastSync));
+      if (lastScheduledBackup > 0) {
+        _lastSyncTime = _getRelativeTime(
+            DateTime.fromMillisecondsSinceEpoch(lastScheduledBackup));
       }
     });
   }
@@ -95,8 +101,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   int _getIntervalHours(String interval) {
     switch (interval) {
-      case '2m': // Testing mode
-        return 0; // Special case for 2 minutes
       case '2h':
         return 2;
       case '6h':
@@ -130,7 +134,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       print('✅ [Sync] Upload complete');
 
-      // Save sync time to both Hive and MongoDB
+      // Save MANUAL sync time (not scheduled backup time!)
       final syncTime = DateTime.now();
       await HiveService.saveSetting(
           'last_sync_time', syncTime.millisecondsSinceEpoch);
@@ -144,12 +148,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
 
-      if (mounted) {
-        // Update only the last sync time display (don't reload all settings)
-        setState(() {
-          _lastSyncTime = _getRelativeTime(syncTime);
-        });
-      }
+      // Note: DO NOT update _lastSyncTime here!
+      // It should only show scheduled backup time, not manual sync
+      print('ℹ️ [Sync] Manual sync complete (does not affect auto-backup time)');
     } catch (e) {
       print('❌ [Sync] Error: $e');
       rethrow; // Re-throw so caller can handle the error
@@ -388,8 +389,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             leading: const Icon(Icons.backup, color: Colors.green),
             title: const Text('Automatic Backup'),
             subtitle: Text(_lastSyncTime != null
-                ? 'Last backup: $_lastSyncTime'
-                : 'Never backed up'),
+                ? 'Last auto-backup: $_lastSyncTime'
+                : 'No auto-backup yet'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               _showAutomaticBackupSettings(context);
@@ -1540,9 +1541,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 intervalMinutes = 360; // Default to 6 hours
               }
 
+              // Check if exact alarm permission is granted (Android 12+)
+              final canSchedule =
+                  await NativeNetworkService.canScheduleExactAlarms();
+
+              if (!canSchedule) {
+                // Permission not granted - show dialog
+                if (context.mounted) {
+                  final shouldOpenSettings = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Row(
+                        children: [
+                          Icon(Icons.alarm, color: Colors.orange),
+                          SizedBox(width: 12),
+                          Text('Permission Required'),
+                        ],
+                      ),
+                      content: const Text(
+                        'To enable automatic backups, Pocket Organizer needs permission to schedule exact alarms.\n\n'
+                        'This ensures your data is backed up precisely at your chosen interval (e.g., every 2 hours).\n\n'
+                        'Tap "Grant Permission" to open system settings.',
+                        style: TextStyle(fontSize: 15, height: 1.4),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => Navigator.pop(context, true),
+                          icon: const Icon(Icons.settings),
+                          label: const Text('Grant Permission'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (shouldOpenSettings == true) {
+                    await NativeNetworkService.requestExactAlarmPermission();
+
+                    // Show info message
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '✅ Please enable "Alarms & reminders" permission, then return to the app',
+                          ),
+                          duration: Duration(seconds: 5),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  }
+                }
+              }
+
               // Schedule with native AlarmManager
               await NativeNetworkService.schedulePeriodicBackup(
-                  intervalMinutes);
+                intervalMinutes,
+                wifiOnly: _syncOnWifiOnly,
+              );
             }
 
             // Sync setting to MongoDB
@@ -1599,7 +1662,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       // Backup status
                       FutureBuilder<int>(
                         future: Future.value(
-                          HiveService.getSetting('last_sync_time',
+                          HiveService.getSetting('last_scheduled_backup_time',
                               defaultValue: 0) as int,
                         ),
                         builder: (context, snapshot) {
@@ -1633,7 +1696,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                           color: Colors.green, size: 20),
                                       const SizedBox(width: 8),
                                       const Text(
-                                        'Last Backup',
+                                        'Last Auto-Backup',
                                         style: TextStyle(
                                             fontWeight: FontWeight.bold),
                                       ),
@@ -1674,7 +1737,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   const SizedBox(width: 12),
                                   const Expanded(
                                     child: Text(
-                                      'No backup found. Tap "Backup Now" to create your first backup.',
+                                      'No scheduled backup yet. Enable automatic backup below.',
                                       style: TextStyle(fontSize: 13),
                                     ),
                                   ),
@@ -1804,7 +1867,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           'Backup only when you tap "Backup Now"',
                           'manual',
                           Icons.touch_app_outlined),
-                      // Testing option removed - use production intervals
                       _buildBackupScheduleOption(setState, 'Every 2 hours',
                           '12 times a day', '2h', Icons.access_time),
                       _buildBackupScheduleOption(setState, 'Every 6 hours',
@@ -1815,6 +1877,121 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           '2 times a day', '12h', Icons.schedule),
                       _buildBackupScheduleOption(setState, 'Once a day',
                           'Daily at midnight', '24h', Icons.calendar_today),
+
+                      const SizedBox(height: 24),
+                      const Divider(),
+                      const SizedBox(height: 16),
+
+                      // WiFi-Only Toggle Section
+                      Row(
+                        children: [
+                          Icon(Icons.wifi,
+                              color: Colors.grey.shade700, size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Network Preference',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _syncOnWifiOnly
+                              ? Colors.green.shade50
+                              : Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _syncOnWifiOnly
+                                ? Colors.green
+                                : Colors.grey.shade300,
+                            width: _syncOnWifiOnly ? 2 : 1,
+                          ),
+                        ),
+                        child: SwitchListTile(
+                          title: const Row(
+                            children: [
+                              Icon(Icons.wifi, size: 18),
+                              SizedBox(width: 8),
+                              Text(
+                                'WiFi Only',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                          subtitle: Text(
+                            _syncOnWifiOnly
+                                ? 'Backup only when connected to WiFi'
+                                : 'Backup on WiFi or mobile data',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          value: _syncOnWifiOnly,
+                          onChanged: (bool value) async {
+                            setState(() {
+                              _syncOnWifiOnly = value;
+                            });
+
+                            // Save to Hive
+                            await HiveService.saveSetting(
+                                'sync_on_wifi_only', value);
+
+                            // Sync to MongoDB
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user != null) {
+                              await UserSettingsSyncService.updateSetting(
+                                userId: user.uid,
+                                syncOnWifiOnly: value,
+                              );
+                            }
+
+                            // If auto-sync is enabled, reschedule with new WiFi constraint
+                            if (_autoSyncInterval != 'manual') {
+                              int intervalMinutes;
+                              if (_autoSyncInterval == '2h') {
+                                intervalMinutes = 120;
+                              } else if (_autoSyncInterval == '6h') {
+                                intervalMinutes = 360;
+                              } else if (_autoSyncInterval == '8h') {
+                                intervalMinutes = 480;
+                              } else if (_autoSyncInterval == '12h') {
+                                intervalMinutes = 720;
+                              } else if (_autoSyncInterval == '24h') {
+                                intervalMinutes = 1440;
+                              } else {
+                                intervalMinutes = 360;
+                              }
+
+                              // Reschedule with new WiFi constraint
+                              await NativeNetworkService.schedulePeriodicBackup(
+                                intervalMinutes,
+                                wifiOnly: value,
+                              );
+                            }
+
+                            // Show confirmation
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    value
+                                        ? '✅ Backup will only happen on WiFi'
+                                        : '✅ Backup will happen on WiFi or mobile data',
+                                  ),
+                                  duration: const Duration(seconds: 2),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          },
+                          activeColor: Colors.green,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 4),
+                        ),
+                      ),
 
                       const SizedBox(height: 20),
 

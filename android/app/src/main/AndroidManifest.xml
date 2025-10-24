@@ -80,25 +80,15 @@
             </intent-filter>
         </receiver>
         
-            <!-- Scheduled Backup Receiver - Handles AlarmManager triggers -->
+            <!-- Backup Alarm Receiver - Handles AlarmManager triggers -->
             <!-- Like WhatsApp - reliable scheduled backups using native alarms -->
             <receiver 
-                android:name=".ScheduledBackupReceiver"
+                android:name=".BackupAlarmReceiver"
                 android:enabled="true"
                 android:exported="false">
                 <intent-filter>
-                    <action android:name="com.example.pocket_organizer.SCHEDULED_BACKUP"/>
-                </intent-filter>
-            </receiver>
-            
-            <!-- Daily Email Report Receiver - Handles AlarmManager triggers -->
-            <!-- Like WhatsApp - reliable daily reports using native alarms -->
-            <receiver 
-                android:name=".DailyEmailReportReceiver"
-                android:enabled="true"
-                android:exported="false">
-                <intent-filter>
-                    <action android:name="com.example.pocket_organizer.DAILY_EMAIL_REPORT"/>
+                    <action android:name="com.example.pocket_organizer.ACTION_SCHEDULED_BACKUP"/>
+                    <action android:name="com.example.pocket_organizer.ACTION_DAILY_EMAIL_REPORT"/>
                 </intent-filter>
             </receiver>
             

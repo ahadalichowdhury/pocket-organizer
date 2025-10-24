@@ -1,215 +1,154 @@
 package com.example.pocket_organizer
 
+import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import java.util.*
 
 /**
- * AlarmScheduler - Schedules periodic backups using AlarmManager
- * Like WhatsApp - uses native Android alarms instead of WorkManager
+ * AlarmScheduler - Uses native Android AlarmManager for precise scheduling
+ * Similar to how WhatsApp schedules automatic backups
  * 
- * WHY ALARMMANAGER INSTEAD OF WORKMANAGER:
- * - WorkManager Dart callback doesn't execute reliably
- * - AlarmManager wakes up the app natively
- * - More reliable for time-critical tasks
+ * KEY FEATURES:
  * - Works even when app is killed
+ * - More reliable than WorkManager for specific intervals
+ * - Battery-efficient with WAKELOCK
+ * - Survives device reboots (with BOOT_COMPLETED receiver)
  */
-class AlarmScheduler {
-    companion object {
-        private const val TAG = "AlarmScheduler"
-        private const val ALARM_REQUEST_CODE = 1002
-        private const val EMAIL_REPORT_REQUEST_CODE = 1003
-        private const val ACTION_SCHEDULED_BACKUP = "com.example.pocket_organizer.SCHEDULED_BACKUP"
-        private const val ACTION_DAILY_EMAIL_REPORT = "com.example.pocket_organizer.DAILY_EMAIL_REPORT"
+object AlarmScheduler {
+    private const val TAG = "AlarmScheduler"
+    private const val BACKUP_REQUEST_CODE = 1001
+    private const val EMAIL_REPORT_REQUEST_CODE = 1002
+    private const val PREFS_NAME = "pocket_organizer_prefs"
+    private const val KEY_WIFI_ONLY = "backup_wifi_only"
+    
+    /**
+     * Schedule periodic backup at fixed interval
+     * @param context Application context
+     * @param intervalMinutes Interval in minutes (120, 360, 480, 720, 1440)
+     * @param wifiOnly If true, backup only on WiFi. If false, backup on any network
+     */
+    @SuppressLint("ScheduleExactAlarm")
+    fun schedulePeriodicBackup(context: Context, intervalMinutes: Int, wifiOnly: Boolean = true) {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "📅 Scheduling periodic backup")
+        Log.d(TAG, "Interval: $intervalMinutes minutes")
+        Log.d(TAG, "WiFi Only: $wifiOnly")
+        Log.d(TAG, "========================================")
         
-        /**
-         * Schedule periodic backup
-         * @param context Application context
-         * @param intervalMinutes Interval in minutes (e.g., 120 for 2 hours, 2 for 2 minutes)
-         */
-        fun schedulePeriodicBackup(context: Context, intervalMinutes: Int) {
-            Log.d(TAG, "========================================")
-            Log.d(TAG, "Scheduling periodic backup")
-            Log.d(TAG, "Interval: $intervalMinutes minutes")
-            Log.d(TAG, "========================================")
+        try {
+            // Save WiFi preference to SharedPreferences
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_WIFI_ONLY, wifiOnly).apply()
+            Log.d(TAG, "✅ Saved WiFi preference: $wifiOnly")
             
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, ScheduledBackupReceiver::class.java).apply {
-                action = ACTION_SCHEDULED_BACKUP
-            }
+            val intent = Intent(context, BackupAlarmReceiver::class.java)
+            intent.action = "com.example.pocket_organizer.ACTION_SCHEDULED_BACKUP"
             
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
-                ALARM_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            
-            // Calculate trigger time (current time + interval)
-            val intervalMillis = intervalMinutes * 60 * 1000L
-            val triggerAtMillis = System.currentTimeMillis() + intervalMillis
-            
-            // Cancel any existing alarm
-            alarmManager.cancel(pendingIntent)
-            
-            // Schedule repeating alarm
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                // For Android 6.0+, use setExactAndAllowWhileIdle for better reliability
-                // Note: This sets ONE alarm, we'll reschedule after each trigger
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                )
-                
-                Log.d(TAG, "✅ Alarm scheduled (exact, one-time)")
-                Log.d(TAG, "   Next backup in $intervalMinutes minutes")
-                Log.d(TAG, "   Will auto-reschedule after each backup")
-            } else {
-                // For older Android, use setRepeating
-                alarmManager.setRepeating(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    intervalMillis,
-                    pendingIntent
-                )
-                
-                Log.d(TAG, "✅ Repeating alarm scheduled")
-                Log.d(TAG, "   Interval: $intervalMinutes minutes")
-            }
-            
-            // Save interval to SharedPreferences for auto-rescheduling
-            context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                .edit()
-                .putInt("flutter.scheduled_backup_interval_minutes", intervalMinutes)
-                .apply()
-            
-            Log.d(TAG, "========================================")
-        }
-        
-        /**
-         * Cancel scheduled backup
-         */
-        fun cancelPeriodicBackup(context: Context) {
-            Log.d(TAG, "Cancelling periodic backup...")
-            
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, ScheduledBackupReceiver::class.java).apply {
-                action = ACTION_SCHEDULED_BACKUP
-            }
-            
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                ALARM_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            
-            alarmManager.cancel(pendingIntent)
-            
-            // Clear saved interval
-            context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                .edit()
-                .remove("flutter.scheduled_backup_interval_minutes")
-                .apply()
-            
-            Log.d(TAG, "✅ Periodic backup cancelled")
-        }
-        
-        /**
-         * Schedule daily email report at specific time
-         * @param context Application context
-         * @param hour Hour of day (0-23), default 11 for 11:00 AM
-         * @param minute Minute of hour (0-59), default 0
-         */
-        fun scheduleDailyEmailReport(context: Context, hour: Int = 11, minute: Int = 0) {
-            Log.d(TAG, "========================================")
-            Log.d(TAG, "Scheduling daily email report")
-            Log.d(TAG, "Time: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}")
-            Log.d(TAG, "========================================")
-            
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, DailyEmailReportReceiver::class.java).apply {
-                action = ACTION_DAILY_EMAIL_REPORT
-            }
-            
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                EMAIL_REPORT_REQUEST_CODE,
+                BACKUP_REQUEST_CODE,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             
             // Calculate next trigger time
-            val calendar = java.util.Calendar.getInstance().apply {
-                set(java.util.Calendar.HOUR_OF_DAY, hour)
-                set(java.util.Calendar.MINUTE, minute)
-                set(java.util.Calendar.SECOND, 0)
-                set(java.util.Calendar.MILLISECOND, 0)
-                
-                // If time has passed today, schedule for tomorrow
-                if (timeInMillis <= System.currentTimeMillis()) {
-                    add(java.util.Calendar.DAY_OF_MONTH, 1)
+            val intervalMillis = intervalMinutes * 60 * 1000L
+            val triggerTime = System.currentTimeMillis() + intervalMillis
+            
+            // Use setRepeating for regular intervals
+            // This is MORE reliable than setInexactRepeating for user-defined intervals
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+ requires SCHEDULE_EXACT_ALARM permission
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setRepeating(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTime,
+                        intervalMillis,
+                        pendingIntent
+                    )
+                    Log.d(TAG, "✅ Exact alarm scheduled (Android 12+)")
+                } else {
+                    Log.w(TAG, "⚠️ Exact alarm permission not granted, using inexact alarm")
+                    alarmManager.setInexactRepeating(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTime,
+                        intervalMillis,
+                        pendingIntent
+                    )
                 }
-            }
-            
-            val triggerAtMillis = calendar.timeInMillis
-            
-            // Cancel any existing alarm
-            alarmManager.cancel(pendingIntent)
-            
-            // Schedule daily repeating alarm
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                // For Android 6.0+, use setExactAndAllowWhileIdle for better reliability
-                // Note: This sets ONE alarm, we'll reschedule after each trigger
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                )
-                
-                val hoursUntil = (triggerAtMillis - System.currentTimeMillis()) / (1000 * 60 * 60)
-                Log.d(TAG, "✅ Alarm scheduled (exact, one-time)")
-                Log.d(TAG, "   Next report in ~$hoursUntil hours")
-                Log.d(TAG, "   Will auto-reschedule after each report")
             } else {
-                // For older Android, use setRepeating
-                val dayInMillis = 24 * 60 * 60 * 1000L
+                // Android 11 and below
                 alarmManager.setRepeating(
                     AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    dayInMillis,
+                    triggerTime,
+                    intervalMillis,
                     pendingIntent
                 )
-                
-                Log.d(TAG, "✅ Repeating daily alarm scheduled")
+                Log.d(TAG, "✅ Repeating alarm scheduled (Android <12)")
             }
             
-            // Save schedule to SharedPreferences
-            context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                .edit()
-                .putInt("flutter.daily_report_hour", hour)
-                .putInt("flutter.daily_report_minute", minute)
-                .putBoolean("flutter.daily_report_enabled", true)
-                .apply()
-            
+            val nextBackupTime = Date(triggerTime)
+            Log.d(TAG, "⏰ Next backup scheduled for: $nextBackupTime")
+            Log.d(TAG, "🔄 Interval: $intervalMinutes minutes ($intervalMillis ms)")
+            Log.d(TAG, "💡 Alarm will trigger even if app is killed")
             Log.d(TAG, "========================================")
-        }
-        
-        /**
-         * Cancel daily email report
-         */
-        fun cancelDailyEmailReport(context: Context) {
-            Log.d(TAG, "Cancelling daily email report...")
             
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to schedule alarm: ${e.message}")
+            e.printStackTrace()
+            throw e
+        }
+    }
+    
+    /**
+     * Cancel periodic backup alarm
+     */
+    fun cancelPeriodicBackup(context: Context) {
+        Log.d(TAG, "🛑 Cancelling periodic backup alarm")
+        
+        try {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, DailyEmailReportReceiver::class.java).apply {
-                action = ACTION_DAILY_EMAIL_REPORT
-            }
+            val intent = Intent(context, BackupAlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                BACKUP_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+            
+            Log.d(TAG, "✅ Periodic backup alarm cancelled")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to cancel alarm: ${e.message}")
+            throw e
+        }
+    }
+    
+    /**
+     * Schedule daily email report at specific time
+     * @param context Application context
+     * @param hour Hour of day (0-23)
+     * @param minute Minute of hour (0-59)
+     */
+    @SuppressLint("ScheduleExactAlarm")
+    fun scheduleDailyEmailReport(context: Context, hour: Int, minute: Int) {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "📧 Scheduling daily email report")
+        Log.d(TAG, "Time: ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}")
+        Log.d(TAG, "========================================")
+        
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, BackupAlarmReceiver::class.java)
+            intent.action = "com.example.pocket_organizer.ACTION_DAILY_EMAIL_REPORT"
             
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -218,115 +157,89 @@ class AlarmScheduler {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             
+            // Calculate next trigger time (today or tomorrow at specified hour:minute)
+            val calendar = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                
+                // If time has passed today, schedule for tomorrow
+                if (timeInMillis <= System.currentTimeMillis()) {
+                    add(Calendar.DAY_OF_YEAR, 1)
+                }
+            }
+            
+            val triggerTime = calendar.timeInMillis
+            val intervalMillis = AlarmManager.INTERVAL_DAY
+            
+            // Use setRepeating for daily reports
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+ requires SCHEDULE_EXACT_ALARM permission
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setRepeating(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTime,
+                        intervalMillis,
+                        pendingIntent
+                    )
+                    Log.d(TAG, "✅ Exact daily alarm scheduled (Android 12+)")
+                } else {
+                    Log.w(TAG, "⚠️ Exact alarm permission not granted, using inexact alarm")
+                    alarmManager.setInexactRepeating(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerTime,
+                        intervalMillis,
+                        pendingIntent
+                    )
+                }
+            } else {
+                // Android 11 and below
+                alarmManager.setRepeating(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerTime,
+                    intervalMillis,
+                    pendingIntent
+                )
+                Log.d(TAG, "✅ Repeating daily alarm scheduled (Android <12)")
+            }
+            
+            val nextReportTime = Date(triggerTime)
+            Log.d(TAG, "⏰ Next report scheduled for: $nextReportTime")
+            Log.d(TAG, "📧 Will repeat daily at ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}")
+            Log.d(TAG, "💡 Alarm will trigger even if app is killed")
+            Log.d(TAG, "========================================")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Failed to schedule daily email report: ${e.message}")
+            e.printStackTrace()
+            throw e
+        }
+    }
+    
+    /**
+     * Cancel daily email report alarm
+     */
+    fun cancelDailyEmailReport(context: Context) {
+        Log.d(TAG, "🛑 Cancelling daily email report alarm")
+        
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, BackupAlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                EMAIL_REPORT_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
             alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
             
-            // Clear saved schedule
-            context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                .edit()
-                .remove("flutter.daily_report_hour")
-                .remove("flutter.daily_report_minute")
-                .putBoolean("flutter.daily_report_enabled", false)
-                .apply()
-            
-            Log.d(TAG, "✅ Daily email report cancelled")
-        }
-    }
-}
-
-/**
- * BroadcastReceiver that handles scheduled backup alarms
- */
-class ScheduledBackupReceiver : BroadcastReceiver() {
-    companion object {
-        private const val TAG = "ScheduledBackupReceiver"
-    }
-    
-    override fun onReceive(context: Context, intent: Intent) {
-        Log.d(TAG, "========================================")
-        Log.d(TAG, "⏰ SCHEDULED BACKUP ALARM TRIGGERED!")
-        Log.d(TAG, "========================================")
-        
-        // Trigger backup by waking up the app (same as WiFi-triggered backup)
-        val wakeUpIntent = Intent(context, MainActivity::class.java).apply {
-            action = "com.example.pocket_organizer.ACTION_SCHEDULED_BACKUP"
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("trigger_backup", true)
-            putExtra("source", "scheduled_alarm")
-        }
-        
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            998, // Different request code from WiFi backup
-            wakeUpIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        try {
-            pendingIntent.send()
-            Log.d(TAG, "✅ Wake-up intent sent for scheduled backup")
-            
-            // Reschedule for next interval (for Android 6.0+ which uses one-time alarms)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val intervalMinutes = prefs.getInt("flutter.scheduled_backup_interval_minutes", -1)
-                
-                if (intervalMinutes > 0) {
-                    Log.d(TAG, "🔄 Rescheduling next backup in $intervalMinutes minutes...")
-                    AlarmScheduler.schedulePeriodicBackup(context, intervalMinutes)
-                }
-            }
+            Log.d(TAG, "✅ Daily email report alarm cancelled")
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Error sending wake-up intent: ${e.message}")
-        }
-    }
-}
-
-/**
- * BroadcastReceiver that handles daily email report alarms
- */
-class DailyEmailReportReceiver : BroadcastReceiver() {
-    companion object {
-        private const val TAG = "DailyEmailReportReceiver"
-    }
-    
-    override fun onReceive(context: Context, intent: Intent) {
-        Log.d(TAG, "========================================")
-        Log.d(TAG, "📧 DAILY EMAIL REPORT ALARM TRIGGERED!")
-        Log.d(TAG, "========================================")
-        
-        // Trigger email report by waking up the app
-        val wakeUpIntent = Intent(context, MainActivity::class.java).apply {
-            action = "com.example.pocket_organizer.ACTION_DAILY_EMAIL_REPORT"
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            putExtra("trigger_email_report", true)
-            putExtra("source", "daily_report_alarm")
-        }
-        
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            997, // Unique request code for email reports
-            wakeUpIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        
-        try {
-            pendingIntent.send()
-            Log.d(TAG, "✅ Wake-up intent sent for daily email report")
-            
-            // Reschedule for next day (for Android 6.0+ which uses one-time alarms)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val hour = prefs.getInt("flutter.daily_report_hour", 11)
-                val minute = prefs.getInt("flutter.daily_report_minute", 0)
-                val enabled = prefs.getBoolean("flutter.daily_report_enabled", false)
-                
-                if (enabled) {
-                    Log.d(TAG, "🔄 Rescheduling next report for tomorrow at $hour:$minute...")
-                    AlarmScheduler.scheduleDailyEmailReport(context, hour, minute)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error sending wake-up intent: ${e.message}")
+            Log.e(TAG, "❌ Failed to cancel daily email report: ${e.message}")
+            throw e
         }
     }
 }

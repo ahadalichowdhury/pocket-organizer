@@ -101,11 +101,44 @@ class MainActivity: FlutterFragmentActivity() {
         alarmChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ALARM_CHANNEL)
         alarmChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "canScheduleExactAlarms" -> {
+                    try {
+                        val canSchedule = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val alarmManager = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                            alarmManager.canScheduleExactAlarms()
+                        } else {
+                            true // Android <12 doesn't need permission
+                        }
+                        Log.d(TAG, "Can schedule exact alarms: $canSchedule")
+                        result.success(canSchedule)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to check alarm permission: ${e.message}")
+                        result.error("CHECK_FAILED", e.message, null)
+                    }
+                }
+                "requestExactAlarmPermission" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                            intent.data = android.net.Uri.parse("package:$packageName")
+                            startActivity(intent)
+                            Log.d(TAG, "Opened alarm permission settings")
+                            result.success(true)
+                        } else {
+                            Log.d(TAG, "No permission needed on Android <12")
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to open alarm settings: ${e.message}")
+                        result.error("OPEN_SETTINGS_FAILED", e.message, null)
+                    }
+                }
                 "schedulePeriodicBackup" -> {
                     try {
                         val intervalMinutes = call.argument<Int>("intervalMinutes") ?: 0
-                        Log.d(TAG, "Scheduling periodic backup: $intervalMinutes minutes")
-                        AlarmScheduler.schedulePeriodicBackup(this, intervalMinutes)
+                        val wifiOnly = call.argument<Boolean>("wifiOnly") ?: true
+                        Log.d(TAG, "Scheduling periodic backup: $intervalMinutes minutes (WiFi only: $wifiOnly)")
+                        AlarmScheduler.schedulePeriodicBackup(this, intervalMinutes, wifiOnly)
                         result.success(true)
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to schedule alarm: ${e.message}")
