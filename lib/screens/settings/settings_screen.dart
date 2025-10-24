@@ -92,8 +92,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   int _getIntervalHours(String interval) {
     switch (interval) {
-      case '5m': // Testing mode - store as 1 hour in MongoDB (minimum)
-        return 1;
       case '2h':
         return 2;
       case '6h':
@@ -111,8 +109,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _getIntervalLabel(String interval) {
     switch (interval) {
-      case '5m':
-        return '5 minutes (testing)';
       case '2h':
         return '2 hours';
       case '6h':
@@ -1541,9 +1537,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             } else {
               // Parse interval to minutes
               int intervalMinutes;
-              if (newValue == '5m') {
-                intervalMinutes = 5; // 5 minutes for testing
-              } else if (newValue == '2h') {
+              if (newValue == '2h') {
                 intervalMinutes = 120; // 2 hours
               } else if (newValue == '6h') {
                 intervalMinutes = 360; // 6 hours
@@ -1883,8 +1877,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           'Backup only when you tap "Backup Now"',
                           'manual',
                           Icons.touch_app_outlined),
-                      _buildBackupScheduleOption(setState, 'Every 5 minutes',
-                          '🐛 FOR TESTING ONLY', '5m', Icons.bug_report),
                       _buildBackupScheduleOption(setState, 'Every 2 hours',
                           '12 times a day', '2h', Icons.access_time),
                       _buildBackupScheduleOption(setState, 'Every 6 hours',
@@ -1969,9 +1961,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             // If auto-sync is enabled, reschedule with new WiFi constraint
                             if (_autoSyncInterval != 'manual') {
                               int intervalMinutes;
-                              if (_autoSyncInterval == '5m') {
-                                intervalMinutes = 5;
-                              } else if (_autoSyncInterval == '2h') {
+                              if (_autoSyncInterval == '2h') {
                                 intervalMinutes = 120;
                               } else if (_autoSyncInterval == '6h') {
                                 intervalMinutes = 360;

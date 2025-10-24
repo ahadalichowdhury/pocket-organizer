@@ -3,9 +3,11 @@
 ## 🔍 **ISSUE: Alerts Not Sending**
 
 ### **Root Cause:**
+
 The trigger checks if an alert was **already sent for the exact same amount**. This prevents duplicate notifications.
 
 **Example:**
+
 - You spent `৳500` → Alert sent ✅ → Record saved in `budget_alerts`
 - You add another expense → Total still `৳500` → Alert NOT sent ⏭️ (already alerted)
 - You spend more → Total now `৳550` → New alert sent ✅ (different amount)
@@ -20,38 +22,38 @@ Run this in **MongoDB Atlas → Data Explorer → pocket_organizer → budget_al
 
 ```javascript
 // Delete ALL budget alerts (fresh start)
-db.budget_alerts.deleteMany({})
+db.budget_alerts.deleteMany({});
 ```
 
 ### **Option 2: Clear Alerts for Specific User**
 
 ```javascript
 // Replace with your userId
-db.budget_alerts.deleteMany({ 
-  userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42" 
-})
+db.budget_alerts.deleteMany({
+  userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42",
+});
 ```
 
 ### **Option 3: Clear Specific Period**
 
 ```javascript
 // Clear only daily alerts
-db.budget_alerts.deleteMany({ 
+db.budget_alerts.deleteMany({
   userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42",
-  budgetKey: "daily_budget"
-})
+  budgetKey: "daily_budget",
+});
 
 // Clear only weekly alerts
-db.budget_alerts.deleteMany({ 
+db.budget_alerts.deleteMany({
   userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42",
-  budgetKey: "weekly_budget"
-})
+  budgetKey: "weekly_budget",
+});
 
 // Clear only monthly alerts
-db.budget_alerts.deleteMany({ 
+db.budget_alerts.deleteMany({
   userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42",
-  budgetKey: "monthly_budget"
-})
+  budgetKey: "monthly_budget",
+});
 ```
 
 ---
@@ -62,15 +64,18 @@ db.budget_alerts.deleteMany({
 
 ```javascript
 // View all alerts
-db.budget_alerts.find().pretty()
+db.budget_alerts.find().pretty();
 
 // View alerts for specific user
-db.budget_alerts.find({ 
-  userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42" 
-}).pretty()
+db.budget_alerts
+  .find({
+    userId: "x8DjU4w7FiSvtHBQ0JAFWf5X0W42",
+  })
+  .pretty();
 ```
 
 **Output will show:**
+
 ```javascript
 {
   "_id": ObjectId("..."),
@@ -89,6 +94,7 @@ db.budget_alerts.find({
 ### **After deploying the improved logging, you'll see:**
 
 #### **Scenario 1: Alert Sent**
+
 ```
 📊 Checking budget for user: x8DjU4...
 💰 Currency: ৳, Alert Threshold: 90%
@@ -99,6 +105,7 @@ daily budget check: Budget=৳1000, Spent=৳920, Threshold=৳900, ShouldAlert=
 ```
 
 #### **Scenario 2: Already Alerted (Duplicate)**
+
 ```
 📊 Checking budget for user: x8DjU4...
 💰 Currency: ৳, Alert Threshold: 90%
@@ -108,6 +115,7 @@ daily budget check: Budget=৳1000, Spent=৳920, Threshold=৳900, ShouldAlert=
 ```
 
 #### **Scenario 3: Below Threshold**
+
 ```
 📊 Checking budget for user: x8DjU4...
 💰 Currency: ৳, Alert Threshold: 90%
@@ -117,6 +125,7 @@ daily budget check: Budget=৳1000, Spent=৳500, Threshold=৳900, ShouldAlert=
 ```
 
 #### **Scenario 4: Over Budget**
+
 ```
 📊 Checking budget for user: x8DjU4...
 💰 Currency: ৳, Alert Threshold: 90%
@@ -130,32 +139,39 @@ daily budget check: Budget=৳1000, Spent=৳1200, Threshold=৳900, ShouldAlert
 ## 🧪 **Testing Steps**
 
 ### **1. Deploy Updated Function**
+
 - Go to MongoDB Atlas → App Services → Functions
 - Update `checkBudgetAndSendAlert`
 - Deploy changes
 
 ### **2. Clear Old Alerts**
+
 ```javascript
-db.budget_alerts.deleteMany({ 
-  userId: "YOUR_USER_ID" 
-})
+db.budget_alerts.deleteMany({
+  userId: "YOUR_USER_ID",
+});
 ```
 
 ### **3. Set Test Budget**
+
 In your app:
+
 - Settings → Budget Settings
 - Daily Budget: `100`
 - Alert Threshold: `80%` (will alert at `৳80`)
 
 ### **4. Add Test Expense**
+
 - Add expense: Amount = `85`
 - This crosses 80% threshold
 - Should trigger alert ✅
 
 ### **5. Check Logs**
+
 MongoDB Atlas → App Services → Logs
 
 **Should see:**
+
 ```
 📊 Checking budget for user: YOUR_USER_ID
 💰 Currency: ৳, Alert Threshold: 80%
@@ -166,10 +182,12 @@ daily budget check: Budget=৳100, Spent=৳85, Threshold=৳80, ShouldAlert=tru
 ```
 
 ### **6. Check Notification**
+
 - Should receive push notification on phone
 - Message: "You've spent ৳85.00 of ৳100.00 (80% threshold reached)"
 
 ### **7. Add Another Small Expense**
+
 - Add expense: Amount = `5`
 - Total now: `৳90`
 - **New alert should be sent** (different amount!)
@@ -183,16 +201,21 @@ daily budget check: Budget=৳100, Spent=৳85, Threshold=৳80, ShouldAlert=tru
 **A:** Check the logs for these issues:
 
 1. **No FCM token:**
+
    ```
    ⚠️ No FCM token found for user
    ```
+
    **Fix:** Logout and login again to register FCM token
 
 2. **Below threshold:**
+
    ```
    ℹ️ daily budget: No alert needed (below threshold or over budget)
    ```
+
    **Fix:** Check if `Spent >= Threshold`
+
    - Example: Spent=`৳70`, Threshold=`৳80` → No alert (need to spend more)
 
 3. **Over budget:**
@@ -205,12 +228,14 @@ daily budget check: Budget=৳100, Spent=৳85, Threshold=৳80, ShouldAlert=tru
 ### **Q: Alert sent but I didn't receive it?**
 
 **A:** Check notification permissions:
+
 - Android Settings → Apps → Pocket Organizer → Notifications → Enabled
 - Check notification channel: "Budget Alerts" should be enabled
 
 ### **Q: How often can I get alerts?**
 
 **A:** You get ONE alert per spending amount:
+
 - Spend `৳80` → Alert sent ✅
 - Spend `৳5` more (total `৳85`) → New alert sent ✅
 - Add 0 more (total still `৳85`) → No alert ⏭️ (already alerted)
@@ -265,6 +290,6 @@ daily budget check: Budget=৳100, Spent=৳85, Threshold=৳80, ShouldAlert=tru
 
 **Last Updated:** October 24, 2025  
 **Related Files:**
+
 - `mongodb_functions/checkBudgetAndSendAlert.js`
 - `mongodb_functions/DEPLOY_INSTRUCTIONS.md`
-
