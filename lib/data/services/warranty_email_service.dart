@@ -51,48 +51,6 @@ class WarrantyEmailService {
     return '⚠️ $documentCount Documents Expiring Soon - Pocket Organizer';
   }
 
-  /// Generate plain text email body
-  static String _generateEmailBody(List<Map<String, dynamic>> documents) {
-    final buffer = StringBuffer();
-    buffer.writeln('Hello,');
-    buffer.writeln();
-    buffer.writeln(
-        'You have ${documents.length} document${documents.length > 1 ? 's' : ''} expiring soon:');
-    buffer.writeln();
-
-    for (final doc in documents) {
-      final name = doc['documentName'] ?? 'Unknown Document';
-      final days = doc['daysUntilExpiry'] ?? 0;
-      final expiryDate = doc['expiryDate'] ?? 'Unknown';
-      final folder = doc['folderName'] ?? '';
-
-      final urgencyEmoji = days <= 1
-          ? '🔴'
-          : days <= 7
-              ? '🟠'
-              : days <= 14
-                  ? '🟡'
-                  : '🟢';
-
-      buffer.writeln('$urgencyEmoji $name');
-      buffer.writeln('   Expires in: $days ${days == 1 ? 'day' : 'days'}');
-      buffer.writeln('   Expiry Date: $expiryDate');
-      if (folder.isNotEmpty) {
-        buffer.writeln('   Folder: $folder');
-      }
-      buffer.writeln();
-    }
-
-    buffer.writeln(
-        '💡 Tip: Open the Pocket Organizer app to view document details, upload renewed warranties, or update expiry dates.');
-    buffer.writeln();
-    buffer.writeln('---');
-    buffer.writeln('This is an automated reminder from Pocket Organizer');
-    buffer.writeln('You can manage warranty reminder settings in the app');
-
-    return buffer.toString();
-  }
-
   /// Generate HTML email content
   static String _generateHtmlEmail(
       String recipientEmail, List<Map<String, dynamic>> documents) {

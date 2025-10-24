@@ -38,29 +38,33 @@ exports = async function(changeEvent) {
   }
   
   const userId = expense.userId;
-  console.log(`Checking budget for user: ${userId}`);
+  console.log(`📊 Checking budget for user: ${userId}`);
   
   try {
     // Get user's settings (budget limits and alert threshold)
     const userSettings = await db.collection("user_settings").findOne({ userId });
     if (!userSettings) {
-      console.log("No settings found for user");
+      console.log("⚠️ No settings found for user");
       return;
     }
     
     const alertThreshold = userSettings.alertThreshold || 80;
+    const currencySymbol = userSettings.currencySymbol || '$';
     const dailyBudget = userSettings.dailyBudget;
     const weeklyBudget = userSettings.weeklyBudget;
     const monthlyBudget = userSettings.monthlyBudget;
     
+    console.log(`💰 Currency: ${currencySymbol}, Alert Threshold: ${alertThreshold}%`);
+    
     // Get user's FCM token
     const userDoc = await db.collection("users").findOne({ userId });
     if (!userDoc || !userDoc.fcmToken) {
-      console.log("No FCM token found for user");
+      console.log("⚠️ No FCM token found for user");
       return;
     }
     
     const fcmToken = userDoc.fcmToken;
+    console.log(`✅ FCM token found`);
     
     // Check daily budget
     if (dailyBudget && dailyBudget > 0) {
@@ -132,13 +136,30 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
     const userSettings = await db.collection("user_settings").findOne({ userId });
     const currencySymbol = userSettings?.currencySymbol || '$';
     
-    // Get expenses for the period
+    console.log(`📅 Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    
+    // DEBUG: Check what date format is stored in MongoDB
+    const sampleExpense = await db.collection("expenses").findOne({ userId: userId });
+    if (sampleExpense) {
+      console.log(`🔍 Sample expense date type: ${typeof sampleExpense.date}, value: ${sampleExpense.date}`);
+    }
+    
+    // Convert date range to ISO strings for comparison (dates are stored as strings in MongoDB)
+    const startDateStr = startDate.toISOString();
+    const endDateStr = endDate.toISOString();
+    
+    // Get expenses for the period (compare as strings)
     const expenses = await db.collection("expenses")
       .find({
         userId: userId,
-        date: { $gte: startDate, $lt: endDate }
+        date: { $gte: startDateStr, $lt: endDateStr }
       })
       .toArray();
+    
+    console.log(`📝 Found ${expenses.length} expenses in ${period} period`);
+    if (expenses.length > 0) {
+      console.log(`   Sample expense date: ${expenses[0].date}, amount: ${expenses[0].amount}`);
+    }
     
     // Calculate total spent
     const totalSpent = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
@@ -149,13 +170,7 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
     // Check if threshold crossed
     const shouldAlert = totalSpent >= thresholdAmount && totalSpent < budget;
     
-    console.log(`${period} budget check:`, {
-      budget,
-      totalSpent,
-      threshold: thresholdAmount,
-      shouldAlert,
-      currencySymbol
-    });
+    console.log(`${period} budget check: Budget=${currencySymbol}${budget}, Spent=${currencySymbol}${totalSpent}, Threshold=${currencySymbol}${thresholdAmount}, ShouldAlert=${shouldAlert}`);
     
     if (shouldAlert) {
       // Check if we already alerted for this amount (prevent duplicates)
@@ -165,9 +180,15 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
         amount: totalSpent
       });
       
-      if (!lastAlert) {
-        // Send FCM notification with user's currency symbol
-        await sendFCMNotification({
+      if (lastAlert) {
+        console.log(`⏭️ Already alerted for ${period} budget at amount ${currencySymbol}${totalSpent} on ${lastAlert.alertedAt}`);
+        return;
+      }
+      
+      console.log(`📬 Sending ${period} budget alert...`);
+      
+      // Send FCM notification with user's currency symbol
+      await sendFCMNotification({
           fcmToken,
           title: `${capitalize(period)} Budget Alert`,
           body: `You've spent ${currencySymbol}${totalSpent.toFixed(2)} of ${currencySymbol}${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
@@ -190,9 +211,9 @@ async function checkAndAlert({ userId, fcmToken, budget, alertThreshold, period,
         });
         
         console.log(`✅ Sent ${period} budget alert to user ${userId}`);
-      } else {
-        console.log(`Already alerted for ${period} budget at amount ${totalSpent}`);
-      }
+      
+    } else {
+      console.log(`ℹ️ ${period} budget: No alert needed (below threshold or over budget)`);
     }
     
   } catch (error) {
@@ -218,7 +239,6 @@ async function sendFCMNotification({ fcmToken, title, body, data }) {
         priority: 'high',
         notification: {
           channel_id: 'budget_alerts',
-          priority: 'high',
           sound: 'default'
         }
       },

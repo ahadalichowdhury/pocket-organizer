@@ -12,12 +12,14 @@
 ### **Option 1: MongoDB Atlas Web UI** (RECOMMENDED)
 
 1. **Go to MongoDB Atlas:**
+
    - Login: https://cloud.mongodb.com/
    - Select your project: `pocket-organizer`
    - Click **App Services** (left sidebar)
    - Click your app name
 
 2. **Update the Function:**
+
    - Click **Functions** (left sidebar)
    - Find function: `checkBudgetAndSendAlert`
    - Click **Edit**
@@ -28,6 +30,7 @@
    - Click **Save**
 
 3. **Deploy Changes:**
+
    - Click **REVIEW DRAFT & DEPLOY** (top-right blue button)
    - Review changes
    - Click **Deploy**
@@ -69,15 +72,18 @@ realm-cli logs
 ### **Test Budget Alert:**
 
 1. **Set a low budget:**
+
    - Go to Settings → Budget Settings
    - Set Daily Budget: `100`
    - Set Alert Threshold: `80%`
 
 2. **Add an expense:**
+
    - Add expense: Amount = `85`
    - This crosses 80% of 100
 
 3. **Check notification:**
+
    - Notification should say: `You've spent ৳85.00 of ৳100.00`
    - NOT: `You've spent $85.00 of $100.00`
 
@@ -92,18 +98,21 @@ realm-cli logs
 ## 📝 What Changed
 
 ### **Line 132-133: Fetch Currency Symbol**
+
 ```javascript
 // Get user settings for currency symbol
 const userSettings = await db.collection("user_settings").findOne({ userId });
-const currencySymbol = userSettings?.currencySymbol || '$';
+const currencySymbol = userSettings?.currencySymbol || "$";
 ```
 
 ### **Line 173: Use in Notification**
+
 ```javascript
 body: `You've spent ${currencySymbol}${totalSpent.toFixed(2)} of ${currencySymbol}${budget.toFixed(2)} (${alertThreshold}% threshold reached)`,
 ```
 
 ### **Line 179: Include in Data Payload**
+
 ```javascript
 data: {
   type: 'budget_alert',
@@ -119,14 +128,17 @@ data: {
 ## ⚠️ Important Notes
 
 1. **Only update `checkBudgetAndSendAlert.js`**
+
    - Other files (`*_V1_SIMPLE`, `*_DIAGNOSTIC`, etc.) are old test versions
    - They are NOT deployed and NOT used
 
 2. **No trigger changes needed**
+
    - The database trigger setup remains the same
    - Only the function code is updated
 
 3. **Backward compatible**
+
    - If `currencySymbol` is not set, defaults to `$`
    - Old users without currency symbol will still work
 
@@ -154,7 +166,7 @@ data: {
 2. Verify function was saved and deployed
 3. Clear budget_alerts collection to trigger new alert:
    ```javascript
-   db.budget_alerts.deleteMany({ userId: "YOUR_USER_ID" })
+   db.budget_alerts.deleteMany({ userId: "YOUR_USER_ID" });
    ```
 4. Add new expense to trigger alert
 
@@ -169,4 +181,3 @@ data: {
 **Last Updated:** October 24, 2025  
 **Commit:** `0fa08ae`  
 **Status:** ✅ Ready for Production
-

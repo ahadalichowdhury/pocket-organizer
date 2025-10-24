@@ -92,6 +92,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   int _getIntervalHours(String interval) {
     switch (interval) {
+      case '5m': // Testing mode - store as 1 hour in MongoDB (minimum)
+        return 1;
       case '2h':
         return 2;
       case '6h':
@@ -109,6 +111,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   String _getIntervalLabel(String interval) {
     switch (interval) {
+      case '5m':
+        return '5 minutes (testing)';
       case '2h':
         return '2 hours';
       case '6h':
@@ -142,10 +146,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       print('✅ [Sync] Upload complete');
 
-      // Save MANUAL sync time (not scheduled backup time!)
+      // Save backup time (for both manual and scheduled)
       final syncTime = DateTime.now();
       await HiveService.saveSetting(
           'last_sync_time', syncTime.millisecondsSinceEpoch);
+
+      // Also save as last backup time (shown in settings)
+      await HiveService.saveSetting(
+          'last_backup_time', syncTime.millisecondsSinceEpoch);
 
       // Update sync time in MongoDB user settings
       final user = FirebaseAuth.instance.currentUser;
@@ -156,10 +164,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
 
-      // Note: DO NOT update _lastSyncTime here!
-      // It should only show scheduled backup time, not manual sync
-      print(
-          'ℹ️ [Sync] Manual sync complete (does not affect auto-backup time)');
+      print('✅ [Sync] Backup complete at ${syncTime.toString()}');
     } catch (e) {
       print('❌ [Sync] Error: $e');
       rethrow; // Re-throw so caller can handle the error
@@ -1536,7 +1541,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             } else {
               // Parse interval to minutes
               int intervalMinutes;
-              if (newValue == '2h') {
+              if (newValue == '5m') {
+                intervalMinutes = 5; // 5 minutes for testing
+              } else if (newValue == '2h') {
                 intervalMinutes = 120; // 2 hours
               } else if (newValue == '6h') {
                 intervalMinutes = 360; // 6 hours
@@ -1671,7 +1678,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       // Backup status
                       FutureBuilder<int>(
                         future: Future.value(
-                          HiveService.getSetting('last_scheduled_backup_time',
+                          HiveService.getSetting('last_backup_time',
                               defaultValue: 0) as int,
                         ),
                         builder: (context, snapshot) {
@@ -1705,7 +1712,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                           color: Colors.green, size: 20),
                                       const SizedBox(width: 8),
                                       const Text(
-                                        'Last Auto-Backup',
+                                        'Last Backup',
                                         style: TextStyle(
                                             fontWeight: FontWeight.bold),
                                       ),
@@ -1876,6 +1883,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           'Backup only when you tap "Backup Now"',
                           'manual',
                           Icons.touch_app_outlined),
+                      _buildBackupScheduleOption(setState, 'Every 5 minutes',
+                          '🐛 FOR TESTING ONLY', '5m', Icons.bug_report),
                       _buildBackupScheduleOption(setState, 'Every 2 hours',
                           '12 times a day', '2h', Icons.access_time),
                       _buildBackupScheduleOption(setState, 'Every 6 hours',
@@ -1960,7 +1969,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             // If auto-sync is enabled, reschedule with new WiFi constraint
                             if (_autoSyncInterval != 'manual') {
                               int intervalMinutes;
-                              if (_autoSyncInterval == '2h') {
+                              if (_autoSyncInterval == '5m') {
+                                intervalMinutes = 5;
+                              } else if (_autoSyncInterval == '2h') {
                                 intervalMinutes = 120;
                               } else if (_autoSyncInterval == '6h') {
                                 intervalMinutes = 360;

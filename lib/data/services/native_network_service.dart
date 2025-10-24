@@ -350,12 +350,12 @@ class NativeNetworkService {
       await HiveService.saveSetting(
           'last_sync_time', syncTime.millisecondsSinceEpoch);
 
-      // IMPORTANT: Save as SCHEDULED backup time (not manual sync)
+      // Save as backup time (shown in settings modal)
       await HiveService.saveSetting(
-          'last_scheduled_backup_time', syncTime.millisecondsSinceEpoch);
+          'last_backup_time', syncTime.millisecondsSinceEpoch);
 
       print('✅ [NativeNetwork] Sync complete!');
-      print('⏰ [NativeNetwork] Scheduled backup time saved: $syncTime');
+      print('⏰ [NativeNetwork] Backup time saved: $syncTime');
       AppLogger.success('Backup complete: $totalItemsSynced items synced');
 
       // Show completion notification (like WhatsApp)

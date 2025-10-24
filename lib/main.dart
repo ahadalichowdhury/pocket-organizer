@@ -8,7 +8,10 @@ import 'core/theme/app_theme.dart';
 import 'data/services/automated_report_service.dart';
 import 'data/services/budget_monitor_service.dart';
 import 'data/services/connectivity_monitor_service.dart';
+import 'data/services/document_sync_service.dart';
+import 'data/services/expense_sync_service.dart';
 import 'data/services/fcm_service.dart';
+import 'data/services/folder_sync_service.dart';
 import 'data/services/hive_service.dart';
 import 'data/services/mongodb_service.dart';
 import 'data/services/native_network_service.dart';
@@ -248,6 +251,20 @@ class _MyAppState extends ConsumerState<MyApp> {
         } catch (e) {
           print('⚠️ [Main] Failed to sync user/FCM to MongoDB: $e');
           // Don't block app initialization if this fails
+        }
+
+        // Download data from cloud on app start
+        if (MongoDBService.isConnected) {
+          print('📥 [Main] Downloading data from cloud...');
+          try {
+            await FolderSyncService.performFullSync();
+            await DocumentSyncService.performFullSync();
+            await ExpenseSyncService().performFullSync();
+            print('✅ [Main] Cloud data synced to local storage');
+          } catch (e) {
+            print('⚠️ [Main] Failed to download cloud data: $e');
+            // Don't block app initialization if this fails
+          }
         }
 
         // Schedule auto-sync if enabled

@@ -160,17 +160,15 @@ class ConnectivityMonitorService {
         print('ℹ️ [SmartRetry] No previous sync found');
       }
 
-      // Sync folders
+      // Perform FULL SYNC (upload + download)
       print('📤 [SmartRetry] Syncing folders...');
-      await FolderSyncService.syncAllFoldersToMongoDB();
+      await FolderSyncService.performFullSync();
 
-      // Sync documents
       print('📤 [SmartRetry] Syncing documents...');
-      await DocumentSyncService.syncAllDocumentsToMongoDB();
+      await DocumentSyncService.performFullSync();
 
-      // Sync expenses
       print('📤 [SmartRetry] Syncing expenses...');
-      await ExpenseSyncService().syncAllExpensesToMongoDB();
+      await ExpenseSyncService().performFullSync();
 
       // Update sync time
       final syncTime = DateTime.now();
