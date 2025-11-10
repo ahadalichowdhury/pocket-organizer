@@ -1,11 +1,19 @@
 {
+  "version": 2,
   "cleanUrls": true,
   "trailingSlash": false,
-  "builds": [{ "src": "website/**", "use": "@vercel/static" }],
-  "routes": [
-    { "src": "^/$", "dest": "/website/index.html" },
-    { "src": "^/about$", "dest": "/website/about.html" },
-    { "src": "^(.*)$", "dest": "/website$1" }
+  "rewrites": [
+    { "source": "/", "destination": "/website/index.html" },
+    { "source": "/about", "destination": "/website/about.html" },
+    {
+      "source": "/favicon.ico",
+      "destination": "/website/assets/icons/app_icon.png"
+    },
+    {
+      "source": "/favicon.png",
+      "destination": "/website/assets/icons/app_icon.png"
+    },
+    { "source": "/(.*)", "destination": "/website/$1" }
   ],
   "headers": [
     {
