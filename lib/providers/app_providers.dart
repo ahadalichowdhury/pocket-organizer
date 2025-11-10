@@ -83,12 +83,19 @@ class FoldersNotifier extends StateNotifier<List<FolderModel>> {
       iconName: iconName,
     );
     await loadFolders();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncFolders();
+
     return folder;
   }
 
   Future<void> updateFolder(FolderModel folder) async {
     await _repository.updateFolder(folder);
     await loadFolders();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncFolders();
   }
 
   Future<bool> deleteFolder(String folderId) async {
@@ -96,6 +103,9 @@ class FoldersNotifier extends StateNotifier<List<FolderModel>> {
       final success = await _repository.deleteFolder(folderId);
       if (success) {
         await loadFolders();
+
+        // 🔄 Trigger smart sync (background, non-blocking)
+        SmartSyncService.syncFolders();
       }
       return success;
     } catch (e) {
@@ -171,6 +181,9 @@ class DocumentsNotifier extends StateNotifier<List<DocumentModel>> {
     // Reload folders to update document counts
     await _refreshFolders();
 
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncDocuments();
+
     print(
         '✅ [DocumentsNotifier] Document created, documents and folders refreshed');
     return document;
@@ -179,23 +192,35 @@ class DocumentsNotifier extends StateNotifier<List<DocumentModel>> {
   Future<void> updateDocument(DocumentModel document) async {
     await _repository.updateDocument(document);
     await loadDocuments();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncDocuments();
   }
 
   Future<void> updateDocumentImage(DocumentModel document) async {
     await _repository.updateDocumentImage(document);
     await loadDocuments();
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncDocuments();
   }
 
   Future<void> moveDocument(String documentId, String newFolderId) async {
     await _repository.moveDocument(documentId, newFolderId);
     await loadDocuments();
     await _refreshFolders(); // Refresh folder counts
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncDocuments();
   }
 
   Future<void> deleteDocument(String documentId) async {
     await _repository.deleteDocument(documentId);
     await loadDocuments();
     await _refreshFolders(); // Refresh folder counts
+
+    // 🔄 Trigger smart sync (background, non-blocking)
+    SmartSyncService.syncDocuments();
   }
 
   List<DocumentModel> searchDocuments(String query) {

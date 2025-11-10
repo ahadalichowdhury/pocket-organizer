@@ -31,7 +31,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final LocalAuthentication _localAuth = LocalAuthentication();
   bool _biometricEnabled = false;
   bool _notificationsEnabled = true;
-  String _autoSyncInterval = 'manual'; // manual, 6h, 8h, 12h, 24h
   bool _syncOnWifiOnly = true; // Default: WiFi only
 
   // Warranty Reminders
@@ -53,9 +52,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         HiveService.getSetting('biometric_enabled', defaultValue: false);
     final notifications =
         HiveService.getSetting('notifications_enabled', defaultValue: true);
-    final autoSync =
-        HiveService.getSetting('auto_sync_interval', defaultValue: 'manual')
-            as String;
     final wifiOnly =
         HiveService.getSetting('sync_on_wifi_only', defaultValue: true);
     final warrantyEnabled = HiveService.getSetting('warranty_reminders_enabled',
@@ -66,7 +62,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() {
       _biometricEnabled = biometric;
       _notificationsEnabled = notifications;
-      _autoSyncInterval = autoSync;
       _syncOnWifiOnly = wifiOnly;
       _warrantyRemindersEnabled = warrantyEnabled;
       _warrantyReminderDays = warrantyDays.cast<int>();
@@ -87,40 +82,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return '${difference.inDays}d ago';
     } else {
       return DateFormat('MMM d, y').format(dateTime);
-    }
-  }
-
-  int _getIntervalHours(String interval) {
-    switch (interval) {
-      case '2h':
-        return 2;
-      case '6h':
-        return 6;
-      case '8h':
-        return 8;
-      case '12h':
-        return 12;
-      case '24h':
-        return 24;
-      default: // 'manual'
-        return 0;
-    }
-  }
-
-  String _getIntervalLabel(String interval) {
-    switch (interval) {
-      case '2h':
-        return '2 hours';
-      case '6h':
-        return '6 hours';
-      case '8h':
-        return '8 hours';
-      case '12h':
-        return '12 hours';
-      case '24h':
-        return '24 hours';
-      default:
-        return 'Not scheduled';
     }
   }
 
@@ -146,6 +107,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final syncTime = DateTime.now();
       await HiveService.saveSetting(
           'last_sync_time', syncTime.millisecondsSinceEpoch);
+
+      // Update the notifier so UI updates immediately
+      SmartSyncService.lastSyncTimeNotifier.value =
+          syncTime.millisecondsSinceEpoch;
+      print('🕐 [Sync] Updated last sync time notifier');
 
       // Also save as last backup time (shown in settings)
       await HiveService.saveSetting(
@@ -397,13 +363,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.backup, color: Colors.green),
-            title: const Text('Automatic Backup'),
-            subtitle: Text(_autoSyncInterval != 'manual'
-                ? 'Scheduled every ${_getIntervalLabel(_autoSyncInterval)}'
-                : 'Manual backup only'),
+            title: const Text('Cloud Sync'),
+            subtitle: const Text('Always on - Auto-syncs instantly'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              _showAutomaticBackupSettings(context);
+              _showCloudSyncStatus(context);
             },
           ),
           ListTile(
@@ -1245,12 +1209,97 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             if (needsSync)
               ElevatedButton.icon(
                 onPressed: () async {
+                  // Capture the navigator BEFORE any async operations
+                  final navigator = Navigator.of(context, rootNavigator: true);
+
                   Navigator.pop(context);
-                  // Trigger sync first
-                  await _performSync();
-                  // Then show logout dialog again
-                  if (context.mounted) {
-                    _showLogoutConfirmation(context);
+
+                  // Show syncing progress
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const AlertDialog(
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('Syncing data...'),
+                        ],
+                      ),
+                    ),
+                  );
+
+                  try {
+                    print('🔄 [Logout] Checking for pending changes...');
+
+                    // Check if we actually need to sync
+                    final hasPending = SmartSyncService.hasPendingChanges;
+                    final isSyncing = SmartSyncService.isSyncing;
+
+                    if (hasPending || isSyncing) {
+                      print(
+                          '📋 [Logout] Pending changes detected, performing full sync...');
+                      await _performSync();
+                      print('✅ [Logout] Full sync complete');
+                    } else {
+                      print(
+                          '✅ [Logout] No pending changes, skipping full sync');
+                    }
+
+                    // Wait for any active background syncs (just in case)
+                    print('⏳ [Logout] Waiting for active background syncs...');
+                    await SmartSyncService.waitForActiveSyncs(
+                        timeoutSeconds: 15);
+                    print('✅ [Logout] Active syncs complete');
+
+                    // Now logout automatically
+                    print('✅ [Logout] Sync complete, logging out...');
+
+                    // Clear local data
+                    print('🗑️ [Logout] Clearing local data...');
+                    await HiveService.clearAllData();
+                    print('✅ [Logout] Local data cleared');
+
+                    // Close user-specific boxes
+                    print('📦 [Logout] Closing user boxes...');
+                    await HiveService.closeUserBoxes();
+                    print('✅ [Logout] User boxes closed');
+
+                    // Stop connectivity monitoring
+                    print('🛑 [Logout] Stopping connectivity monitoring...');
+                    ConnectivityMonitorService.stopMonitoring();
+                    print('✅ [Logout] Connectivity monitoring stopped');
+
+                    // Sign out from Firebase
+                    print('🔐 [Logout] Signing out from Firebase...');
+                    await ref.read(authServiceProvider).signOut();
+                    print('✅ [Logout] Signed out from Firebase');
+
+                    // Navigate to login using captured navigator
+                    print('🚀 [Logout] Navigating to login screen...');
+                    navigator.pushNamedAndRemoveUntil(
+                        '/login', (route) => false);
+                    print('✅ [Logout] Navigation complete');
+                  } catch (e) {
+                    print('❌ [Logout] Error during sync & logout: $e');
+
+                    // Close progress dialog
+                    try {
+                      navigator.pop();
+                    } catch (_) {
+                      // Ignore if can't pop
+                    }
+
+                    // Show error
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Sync failed: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
                 },
                 icon: const Icon(Icons.cloud_upload),
@@ -1263,6 +1312,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
+
+                // ✅ Wait for any active background syncs to complete
+                print('⏳ [Logout] Waiting for active syncs...');
+                try {
+                  await SmartSyncService.waitForActiveSyncs(timeoutSeconds: 15);
+                  print('✅ [Logout] Active syncs completed');
+                } catch (e) {
+                  print('⚠️ [Logout] Sync wait error: $e');
+                }
 
                 // Clear local data
                 await HiveService.clearAllData();
@@ -1477,178 +1535,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildBackupScheduleOption(
-    StateSetter setDialogState,
-    String title,
-    String subtitle,
-    String value,
-    IconData icon,
-  ) {
-    final isSelected = _autoSyncInterval == value;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isSelected ? Colors.green.shade50 : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isSelected ? Colors.green : Colors.grey.shade300,
-          width: isSelected ? 2 : 1,
-        ),
-      ),
-      child: RadioListTile<String>(
-        title: Row(
-          children: [
-            Icon(icon,
-                size: 18,
-                color: isSelected ? Colors.green : Colors.grey.shade700),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? Colors.green.shade900 : Colors.black87,
-              ),
-            ),
-          ],
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            fontSize: 12,
-            color: isSelected ? Colors.green.shade700 : Colors.grey.shade600,
-          ),
-        ),
-        value: value,
-        groupValue: _autoSyncInterval,
-        onChanged: (String? newValue) async {
-          if (newValue != null) {
-            setDialogState(() {
-              _autoSyncInterval = newValue;
-            });
-            setState(() {
-              _autoSyncInterval = newValue;
-            });
-            await HiveService.saveSetting('auto_sync_interval', newValue);
-
-            // Schedule auto-sync with native AlarmManager (like WhatsApp)
-            if (newValue == 'manual') {
-              // Disable auto-sync
-              await NativeNetworkService.cancelPeriodicBackup();
-            } else {
-              // Parse interval to minutes
-              int intervalMinutes;
-              if (newValue == '2h') {
-                intervalMinutes = 120; // 2 hours
-              } else if (newValue == '6h') {
-                intervalMinutes = 360; // 6 hours
-              } else if (newValue == '8h') {
-                intervalMinutes = 480; // 8 hours
-              } else if (newValue == '12h') {
-                intervalMinutes = 720; // 12 hours
-              } else if (newValue == '24h') {
-                intervalMinutes = 1440; // 24 hours
-              } else {
-                intervalMinutes = 360; // Default to 6 hours
-              }
-
-              // Check if exact alarm permission is granted (Android 12+)
-              final canSchedule =
-                  await NativeNetworkService.canScheduleExactAlarms();
-
-              if (!canSchedule) {
-                // Permission not granted - show dialog
-                if (context.mounted) {
-                  final shouldOpenSettings = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Row(
-                        children: [
-                          Icon(Icons.alarm, color: Colors.orange),
-                          SizedBox(width: 12),
-                          Text('Permission Required'),
-                        ],
-                      ),
-                      content: const Text(
-                        'To enable automatic backups, Pocket Organizer needs permission to schedule exact alarms.\n\n'
-                        'This ensures your data is backed up precisely at your chosen interval (e.g., every 2 hours).\n\n'
-                        'Tap "Grant Permission" to open system settings.',
-                        style: TextStyle(fontSize: 15, height: 1.4),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Cancel'),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => Navigator.pop(context, true),
-                          icon: const Icon(Icons.settings),
-                          label: const Text('Grant Permission'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-
-                  if (shouldOpenSettings == true) {
-                    await NativeNetworkService.requestExactAlarmPermission();
-
-                    // Show info message
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            '✅ Please enable "Alarms & reminders" permission, then return to the app',
-                          ),
-                          duration: Duration(seconds: 5),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    }
-                  }
-                }
-              }
-
-              // Schedule with native AlarmManager
-              await NativeNetworkService.schedulePeriodicBackup(
-                intervalMinutes,
-                wifiOnly: _syncOnWifiOnly,
-              );
-            }
-
-            // Sync setting to MongoDB
-            final user = FirebaseAuth.instance.currentUser;
-            if (user != null) {
-              await UserSettingsSyncService.updateSetting(
-                userId: user.uid,
-                autoSyncInterval: _getIntervalHours(newValue),
-              );
-            }
-
-            // Show confirmation
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Auto backup set to: $title'),
-                  duration: const Duration(seconds: 2),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            }
-          }
-        },
-        activeColor: Colors.green,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      ),
-    );
-  }
-
-  void _showAutomaticBackupSettings(BuildContext context) {
+  void _showCloudSyncStatus(BuildContext context) {
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) {
         bool isLoading = false;
 
@@ -1657,9 +1546,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             return AlertDialog(
               title: const Row(
                 children: [
-                  Icon(Icons.backup, color: Colors.green, size: 28),
+                  Icon(Icons.cloud_sync, color: Colors.green, size: 28),
                   SizedBox(width: 12),
-                  Text('Automatic Backup'),
+                  Text('Cloud Sync'),
                 ],
               ),
               content: SizedBox(
@@ -1669,98 +1558,104 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Backup status
-                      FutureBuilder<int>(
-                        future: Future.value(
-                          HiveService.getSetting('last_backup_time',
-                              defaultValue: 0) as int,
+                      // Sync Status Card
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.green,
+                              Colors.green.shade700,
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(),
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.check_circle,
+                              size: 48,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Auto-Sync Active',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
                               ),
-                            );
-                          }
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Syncing instantly whenever online',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
 
-                          final lastBackupTime = snapshot.data ?? 0;
-                          if (lastBackupTime > 0) {
-                            final backupDate =
-                                DateTime.fromMillisecondsSinceEpoch(
-                                    lastBackupTime);
+                      const SizedBox(height: 20),
+
+                      // Last Sync Info - Reactive with ValueListenableBuilder
+                      ValueListenableBuilder<int>(
+                        valueListenable: SmartSyncService.lastSyncTimeNotifier,
+                        builder: (context, lastSyncTime, child) {
+                          // Use the notifier value directly (it's initialized from Hive on app start)
+                          final savedTime = lastSyncTime;
+
+                          if (savedTime > 0) {
+                            final syncDate =
+                                DateTime.fromMillisecondsSinceEpoch(savedTime);
                             return Container(
-                              padding: const EdgeInsets.all(16),
+                              padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.check_circle,
-                                          color: Colors.green, size: 20),
-                                      const SizedBox(width: 8),
-                                      const Text(
-                                        'Last Backup',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _getRelativeTime(backupDate),
-                                    style: TextStyle(
-                                        color: Colors.grey.shade700,
-                                        fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    DateFormat('MMM dd, yyyy hh:mm a')
-                                        .format(backupDate),
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          } else {
-                            return Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.shade50,
-                                borderRadius: BorderRadius.circular(12),
-                                border:
-                                    Border.all(color: Colors.orange.shade200),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.warning_amber,
-                                      color: Colors.orange.shade700, size: 20),
-                                  const SizedBox(width: 12),
-                                  const Expanded(
-                                    child: Text(
-                                      'No scheduled backup yet. Enable automatic backup below.',
-                                      style: TextStyle(fontSize: 13),
+                                  Icon(Icons.history,
+                                      color: Colors.grey.shade700, size: 20),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Last Sync',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _getRelativeTime(syncDate),
+                                          style: TextStyle(
+                                            color: Colors.grey.shade700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
                             );
                           }
+                          return const SizedBox.shrink();
                         },
                       ),
 
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 20),
 
-                      // Backup Now button
+                      // Sync Now Button
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -1773,7 +1668,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   try {
                                     await _performSync();
 
-                                    // Rebuild the modal to show updated time
                                     setState(() => isLoading = false);
 
                                     if (context.mounted) {
@@ -1787,7 +1681,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                                   color: Colors.white),
                                               SizedBox(width: 12),
                                               Text(
-                                                  'Backup completed successfully!'),
+                                                  'Sync completed successfully!'),
                                             ],
                                           ),
                                           backgroundColor: Colors.green,
@@ -1806,7 +1700,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                                   color: Colors.white),
                                               const SizedBox(width: 12),
                                               Text(
-                                                  'Backup failed: ${e.toString()}'),
+                                                  'Sync failed: ${e.toString()}'),
                                             ],
                                           ),
                                           backgroundColor: Colors.red,
@@ -1824,16 +1718,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.backup, size: 24),
+                              : const Icon(Icons.sync, size: 24),
                           label: Text(
-                            isLoading ? 'Backing up...' : 'Backup Now',
+                            isLoading ? 'Syncing...' : 'Sync Now',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
+                            backgroundColor: Colors.blue,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -1842,51 +1736,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 24),
-                      const Divider(),
-                      const SizedBox(height: 16),
-
-                      // Backup Schedule Section
-                      Row(
-                        children: [
-                          Icon(Icons.schedule,
-                              color: Colors.grey.shade700, size: 20),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Backup Schedule',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Choose how often to automatically backup your data',
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey.shade600),
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Schedule options
-                      _buildBackupScheduleOption(
-                          setState,
-                          'Manual Only',
-                          'Backup only when you tap "Backup Now"',
-                          'manual',
-                          Icons.touch_app_outlined),
-                      _buildBackupScheduleOption(setState, 'Every 2 hours',
-                          '12 times a day', '2h', Icons.access_time),
-                      _buildBackupScheduleOption(setState, 'Every 6 hours',
-                          '4 times a day', '6h', Icons.access_time),
-                      _buildBackupScheduleOption(setState, 'Every 8 hours',
-                          '3 times a day', '8h', Icons.access_time),
-                      _buildBackupScheduleOption(setState, 'Every 12 hours',
-                          '2 times a day', '12h', Icons.schedule),
-                      _buildBackupScheduleOption(setState, 'Once a day',
-                          'Daily at midnight', '24h', Icons.calendar_today),
 
                       const SizedBox(height: 24),
                       const Divider(),
@@ -1935,8 +1784,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                           subtitle: Text(
                             _syncOnWifiOnly
-                                ? 'Backup only when connected to WiFi'
-                                : 'Backup on WiFi or mobile data',
+                                ? 'Sync only when connected to WiFi'
+                                : 'Sync on WiFi or mobile data',
                             style: const TextStyle(fontSize: 12),
                           ),
                           value: _syncOnWifiOnly,
@@ -1958,38 +1807,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               );
                             }
 
-                            // If auto-sync is enabled, reschedule with new WiFi constraint
-                            if (_autoSyncInterval != 'manual') {
-                              int intervalMinutes;
-                              if (_autoSyncInterval == '2h') {
-                                intervalMinutes = 120;
-                              } else if (_autoSyncInterval == '6h') {
-                                intervalMinutes = 360;
-                              } else if (_autoSyncInterval == '8h') {
-                                intervalMinutes = 480;
-                              } else if (_autoSyncInterval == '12h') {
-                                intervalMinutes = 720;
-                              } else if (_autoSyncInterval == '24h') {
-                                intervalMinutes = 1440;
-                              } else {
-                                intervalMinutes = 360;
-                              }
-
-                              // Reschedule with new WiFi constraint
-                              await NativeNetworkService.schedulePeriodicBackup(
-                                intervalMinutes,
-                                wifiOnly: value,
-                              );
-                            }
-
                             // Show confirmation
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(
                                     value
-                                        ? '✅ Backup will only happen on WiFi'
-                                        : '✅ Backup will happen on WiFi or mobile data',
+                                        ? '✅ Sync will only happen on WiFi'
+                                        : '✅ Sync will happen on WiFi or mobile data',
                                   ),
                                   duration: const Duration(seconds: 2),
                                   backgroundColor: Colors.green,
@@ -2031,10 +1856,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '• Your data is automatically backed up to the cloud\n'
-                                    '• Login on any device to restore your data\n'
-                                    '• Backup includes: expenses, documents, folders, settings\n'
-                                    '• Images are stored separately in S3 (always available)',
+                                    '• Changes sync instantly when online\n'
+                                    '• Queued locally when offline\n'
+                                    '• Auto-syncs when back online\n'
+                                    '• No manual sync needed!',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.blue.shade700,

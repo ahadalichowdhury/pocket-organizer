@@ -1,0 +1,18 @@
+{
+  "name": "Pocket Organizer",
+  "short_name": "Organizer",
+  "start_url": "/website/",
+  "scope": "/website/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0f172a",
+  "description": "Securely organize documents, track expenses, manage folders, and receive smart reminders.",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='12' fill='%230f172a'/><path d='M16 20h32v24a8 8 0 0 1-8 8H24a8 8 0 0 1-8-8V20z' fill='%23fff'/><path d='M20 16h24a4 4 0 0 1 4 4v4H16v-4a4 4 0 0 1 4-4z' fill='%23638cff'/></svg>",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

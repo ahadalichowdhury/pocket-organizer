@@ -27,7 +27,7 @@ class ExpensesScreen extends ConsumerStatefulWidget {
 }
 
 class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
-  String _selectedPeriod = 'Month'; // Day, Week, Month, Year
+  String _selectedPeriod = 'Day'; // Day, Week, Month, Year
   String? _selectedCategoryFilter;
   String? _selectedPaymentFilter;
   String _searchQuery = '';
@@ -218,101 +218,115 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
           ),
         ],
       ),
-      body: expenses.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.account_balance_wallet_outlined,
-                    size: 80,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No expenses yet',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.grey.shade600,
+      body: Column(
+        children: [
+          // Always show period selector at the top
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: _buildPeriodSelector(context),
+          ),
+
+          // Content area
+          Expanded(
+            child: expenses.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.account_balance_wallet_outlined,
+                          size: 80,
+                          color: Colors.grey.shade400,
                         ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Start tracking your expenses',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey.shade500,
+                        const SizedBox(height: 16),
+                        Text(
+                          'No expenses found',
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    color: Colors.grey.shade600,
+                                  ),
                         ),
-                  ),
-                ],
-              ),
-            )
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Period Selector
-                  _buildPeriodSelector(context),
-                  const SizedBox(height: 16),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No expenses for selected period',
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey.shade500,
+                                  ),
+                        ),
+                      ],
+                    ),
+                  )
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Budget Limit Progress
+                        _buildBudgetProgress(context, expenses),
 
-                  // Budget Limit Progress
-                  _buildBudgetProgress(context, expenses),
+                        // Summary Card
+                        ExpenseSummaryCard(
+                          expenses: expenses,
+                          period: _selectedPeriod,
+                        ),
+                        const SizedBox(height: 24),
 
-                  // Summary Card
-                  ExpenseSummaryCard(
-                    expenses: expenses,
-                    period: _selectedPeriod,
-                  ),
-                  const SizedBox(height: 24),
+                        // Category Breakdown Chart
+                        Text(
+                          'Category Breakdown',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 200,
+                          child: _buildCategoryChart(
+                              stats['categories'] as Map<String, double>),
+                        ),
+                        const SizedBox(height: 24),
 
-                  // Category Breakdown Chart
-                  Text(
-                    'Category Breakdown',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 200,
-                    child: _buildCategoryChart(
-                        stats['categories'] as Map<String, double>),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Expense List
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Transactions',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      Text(
-                        '${expenses.length} items',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey,
+                        // Expense List
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Transactions',
+                              style: Theme.of(context).textTheme.headlineSmall,
                             ),
-                      ),
-                    ],
+                            Text(
+                              '${expenses.length} items',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    color: Colors.grey,
+                                  ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: expenses.length,
+                          itemBuilder: (context, index) {
+                            return ExpenseTile(
+                              expense: expenses[index],
+                              onTap: () {
+                                _showExpenseDetails(context, expenses[index]);
+                              },
+                              onLongPress: () {
+                                _showExpenseOptions(context, expenses[index]);
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: expenses.length,
-                    itemBuilder: (context, index) {
-                      return ExpenseTile(
-                        expense: expenses[index],
-                        onTap: () {
-                          _showExpenseDetails(context, expenses[index]);
-                        },
-                        onLongPress: () {
-                          _showExpenseOptions(context, expenses[index]);
-                        },
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'expenses_fab',
         onPressed: () => _showAddExpenseDialog(context),

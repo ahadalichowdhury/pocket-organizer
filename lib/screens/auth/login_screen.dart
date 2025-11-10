@@ -8,6 +8,7 @@ import '../../data/services/expense_sync_service.dart';
 import '../../data/services/fcm_service.dart';
 import '../../data/services/folder_sync_service.dart';
 import '../../data/services/hive_service.dart';
+import '../../data/services/mongodb_service.dart';
 import '../../data/services/user_sync_service.dart';
 import '../../providers/app_providers.dart';
 
@@ -231,6 +232,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           print('🔐 [Login] Syncing FCM token to MongoDB...');
           await FCMService.syncTokenToMongoDB();
           print('✅ [Login] FCM token synced to MongoDB');
+
+          // 🔐 SINGLE-SESSION ENFORCEMENT: Check for other active devices
+          print('🔐 [Login] Checking for other active devices...');
+          try {
+            await _enforceSingleSession(user.uid);
+
+            // Register current device after removing others
+            await _registerCurrentDevice(user.uid);
+          } catch (e) {
+            print('⚠️ [Login] Failed to check/logout other devices: $e');
+            // Don't block login if this fails
+          }
         }
       } catch (e) {
         print('⚠️ [Login] Failed to sync user/FCM to MongoDB: $e');
@@ -333,6 +346,138 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/home');
+    }
+  }
+
+  /// Enforce single-session: logout other active devices
+  Future<void> _enforceSingleSession(String userId) async {
+    try {
+      // Get current device info (simplified)
+      final deviceInfo = await _getDeviceInfo();
+      final currentDeviceId = deviceInfo['deviceId'];
+
+      // Query MongoDB for other active devices
+      final usersCollection = MongoDBService.database?.collection('users');
+      if (usersCollection == null) {
+        print('⚠️ [SingleSession] MongoDB not connected');
+        return;
+      }
+
+      final user = await usersCollection.findOne({'userId': userId});
+      if (user == null) {
+        print('⚠️ [SingleSession] User not found in MongoDB');
+        return;
+      }
+
+      // Get active devices (excluding current device)
+      final List activeDevices = user['activeDevices'] ?? [];
+      final otherDevices = activeDevices.where((device) {
+        return device['deviceId'] != currentDeviceId;
+      }).toList();
+
+      if (otherDevices.isEmpty) {
+        print('✅ [SingleSession] No other active devices found');
+        return;
+      }
+
+      print(
+          '⚠️ [SingleSession] Found ${otherDevices.length} other active device(s)');
+
+      // Remove all other devices from MongoDB (force single session)
+      // The other device will auto-logout when it syncs and finds it's no longer in activeDevices
+      await usersCollection.updateOne(
+        {'userId': userId},
+        {
+          '\$pull': {
+            'activeDevices': {
+              'deviceId': {'\$ne': currentDeviceId}
+            }
+          }
+        },
+      );
+
+      print(
+          '✅ [SingleSession] Removed ${otherDevices.length} other device(s) from MongoDB');
+
+      // Show notification to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Logged out from ${otherDevices.length} other device${otherDevices.length > 1 ? 's' : ''}',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ [SingleSession] Error enforcing single session: $e');
+      rethrow;
+    }
+  }
+
+  /// Get device info for single-session enforcement
+  Future<Map<String, dynamic>> _getDeviceInfo() async {
+    try {
+      // Try to get stored device ID
+      var deviceId =
+          HiveService.getSetting('device_id', defaultValue: '') as String;
+
+      // If no device ID, generate one
+      if (deviceId.isEmpty) {
+        deviceId = DateTime.now().millisecondsSinceEpoch.toString();
+        await HiveService.saveSetting('device_id', deviceId);
+      }
+
+      return {'deviceId': deviceId};
+    } catch (e) {
+      print('⚠️ [DeviceInfo] Error getting device info: $e');
+      return {'deviceId': DateTime.now().millisecondsSinceEpoch.toString()};
+    }
+  }
+
+  /// Register current device in MongoDB activeDevices array
+  Future<void> _registerCurrentDevice(String userId) async {
+    try {
+      // Get current device info
+      final deviceInfo = await _getDeviceInfo();
+      final currentDeviceId = deviceInfo['deviceId'];
+
+      // Get FCM token
+      final fcmToken = await FCMService.getToken();
+
+      // Get device name (simplified)
+      final deviceName =
+          'Device ${currentDeviceId.substring(currentDeviceId.length - 4)}';
+
+      // Query MongoDB
+      final usersCollection = MongoDBService.database?.collection('users');
+      if (usersCollection == null) {
+        print('⚠️ [RegisterDevice] MongoDB not connected');
+        return;
+      }
+
+      // Add current device to activeDevices array
+      await usersCollection.updateOne(
+        {'userId': userId},
+        {
+          '\$addToSet': {
+            'activeDevices': {
+              'deviceId': currentDeviceId,
+              'deviceName': deviceName,
+              'fcmToken': fcmToken,
+              'lastSeen': DateTime.now().toIso8601String(),
+            }
+          }
+        },
+        upsert: true,
+      );
+
+      print('✅ [RegisterDevice] Device registered: $deviceName');
+    } catch (e) {
+      print('❌ [RegisterDevice] Error registering device: $e');
+      rethrow;
     }
   }
 
