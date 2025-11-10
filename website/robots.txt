@@ -1,6 +1,6 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://example.com/website/sitemap.xml
+Sitemap: https://pocket-organizer.vercel.app/website/sitemap.xml
 
 

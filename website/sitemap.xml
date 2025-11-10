@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://example.com/</loc>
+    <loc>https://pocket-organizer.vercel.app/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://example.com/website/about.html</loc>
+    <loc>https://pocket-organizer.vercel.app/website/about.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://example.com/#features</loc>
+    <loc>https://pocket-organizer.vercel.app/#features</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://example.com/#about</loc>
+    <loc>https://pocket-organizer.vercel.app/#about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://example.com/#contact</loc>
+    <loc>https://pocket-organizer.vercel.app/#contact</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
